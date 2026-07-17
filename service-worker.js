@@ -1,10 +1,15 @@
-// TMR Expense Tracker — Service Worker
+// TMR Expense Tracker â€” Service Worker
 // Bump this version string whenever index.html (or any cached asset) changes,
 // so returning users get the new version instead of a stale cache.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `tmr-expense-tracker-${CACHE_VERSION}`;
 
-// Same-origin app shell — required for the app to boot offline.
+// Same-origin app shell ONLY â€” required for the app to boot offline.
+// Cross-origin CDN libraries (React/Babel/Chart.js/Tailwind/fonts) are
+// intentionally NOT listed here and NEVER cached â€” see the fetch handler
+// below. Caching those as opaque cross-origin responses is what caused
+// Safari to reject them ("Response served by service worker is opaque"),
+// which left React/Babel undefined and crashed the app.
 const APP_SHELL = [
   './',
   './index.html',
@@ -16,39 +21,15 @@ const APP_SHELL = [
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
   './icons/favicon-16.png',
-];
-
-// Cross-origin libraries the app loads at runtime (React/Babel/Chart.js/Tailwind/fonts).
-// Cached best-effort with no-cors ("opaque") requests — a failure here must never
-// block installation, since some of these may be blocked by the user's network.
-const RUNTIME_LIBS = [
-  'https://unpkg.com/react@18/umd/react.production.min.js',
-  'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
-  'https://unpkg.com/@babel/standalone@7/babel.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap',
+  './icons/tmr-logo.png',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      // App shell must succeed — these are same-origin and always reachable on deploy.
+      // Same-origin only â€” always reachable on a GitHub Pages deploy.
       await cache.addAll(APP_SHELL);
-      // Runtime libs are best-effort: cache each individually so one failure
-      // (e.g. offline install, blocked CDN) doesn't abort the whole install.
-      await Promise.all(
-        RUNTIME_LIBS.map(async (url) => {
-          try {
-            const req = new Request(url, { mode: 'no-cors' });
-            const res = await fetch(req);
-            await cache.put(req, res);
-          } catch (err) {
-            // Ignore — will be fetched from network (and cached) on first real use.
-          }
-        })
-      );
       await self.skipWaiting();
     })()
   );
@@ -57,6 +38,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Deleting every cache that isn't the current version also clears out
+      // any previously (incorrectly) cached opaque CDN responses from older
+      // versions of this service worker.
       const names = await caches.keys();
       await Promise.all(
         names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
@@ -70,8 +54,18 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
 
-  // Page navigations: network-first so users get fresh content when online,
-  // falling back to the cached shell when offline.
+  const requestURL = new URL(request.url);
+  const isSameOrigin = requestURL.origin === self.location.origin;
+
+  // Cross-origin requests (unpkg.com, cdn.jsdelivr.net, cdn.tailwindcss.com,
+  // fonts.googleapis.com, fonts.gstatic.com, etc.) are never intercepted.
+  // Not calling respondWith() here means the browser handles the request
+  // exactly as if no service worker existed at all â€” a normal, non-opaque
+  // network fetch with correct CORS handling in every browser, including Safari.
+  if (!isSameOrigin) return;
+
+  // Same-origin page navigations: network-first so users get fresh content
+  // when online, falling back to the cached shell when offline.
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
@@ -89,7 +83,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else (assets, CDN libs, fonts): cache-first, then network,
+  // Same-origin assets (manifest, icons, etc.): cache-first, then network,
   // caching the network response for next time.
   event.respondWith(
     (async () => {
@@ -98,8 +92,7 @@ self.addEventListener('fetch', (event) => {
       if (cached) return cached;
       try {
         const res = await fetch(request);
-        // Cache successful same-origin or opaque cross-origin responses.
-        if (res && (res.ok || res.type === 'opaque')) {
+        if (res && res.ok) {
           cache.put(request, res.clone());
         }
         return res;
