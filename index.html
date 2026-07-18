@@ -62,12 +62,21 @@
     --border:rgba(255,255,255,0.08);
     --border-soft:rgba(255,255,255,0.05);
     color-scheme: dark;
+    /* iOS safe-area insets (0px on non-notched devices and regular browser tabs) */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
   }
   [data-theme="light"]{ color-scheme: light; }
   *{box-sizing:border-box;}
   html,body{height:100%;}
   body{
     margin:0;
+    /* Shift the whole app in from the sides in landscape on notched iPhones,
+       without touching any component's own padding/layout. */
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
     background:
       radial-gradient(1200px 600px at 85% -10%, rgba(52,211,153,0.10), transparent 60%),
       radial-gradient(900px 500px at -10% 110%, rgba(129,140,248,0.10), transparent 60%),
@@ -377,7 +386,13 @@ const inputCls = 'w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-
 function Modal({ open, onClose, title, children, wide = false }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"
+      style={{
+        paddingTop: 'calc(var(--safe-top) + 1rem)',
+        paddingBottom: 'calc(var(--safe-bottom) + 1rem)',
+        paddingLeft: 'calc(var(--safe-left) + 1rem)',
+        paddingRight: 'calc(var(--safe-right) + 1rem)',
+      }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
       <div className={`relative glass-strong rounded-2xl p-6 w-full modal-pop max-h-[88vh] overflow-y-auto scrollbar-thin ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
         <div className="flex items-center justify-between mb-5">
@@ -1573,7 +1588,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
     <>
       {mobileOpen ? <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setMobileOpen(false)}></div> : null}
       <aside className={`fixed lg:sticky top-0 h-screen w-64 shrink-0 glass-strong border-r border-white/5 z-40 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
-        <div className="flex items-center gap-3 px-5 py-6">
+        <div className="flex items-center gap-3 px-5 py-6" style={{ paddingTop: 'calc(var(--safe-top) + 1.5rem)' }}>
           <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
             <img src="./icons/tmr-logo.png" alt="TMR" className="w-full h-full object-cover" />
           </div>
@@ -1594,7 +1609,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
             </button>
           ))}
         </nav>
-        <div className="p-4 mx-3 mb-4 rounded-xl bg-white/5 border border-white/5">
+        <div className="p-4 mx-3 rounded-xl bg-white/5 border border-white/5" style={{ marginBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
           <div className="text-xs text-white/40 leading-relaxed">All data stays on this device via LocalStorage. No accounts, no cloud.</div>
         </div>
       </aside>
@@ -1606,7 +1621,8 @@ function TopBar({ view, onMenu, theme, onToggleTheme }: { view: string; onMenu: 
   const meta = MODULES.find(m => m.key === view)!;
   const [now] = useState(new Date());
   return (
-    <header className="sticky top-0 z-20 glass border-b border-white/5 px-4 sm:px-6 py-4 flex items-center justify-between">
+    <header className="sticky top-0 z-20 glass border-b border-white/5 px-4 sm:px-6 py-4 flex items-center justify-between"
+      style={{ paddingTop: 'calc(var(--safe-top) + 1rem)' }}>
       <div className="flex items-center gap-3">
         <button onClick={onMenu} className="lg:hidden w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center">
           <Icon name="filter" size={16} />
@@ -1651,7 +1667,7 @@ function App() {
       <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
       <div className="flex-1 min-w-0">
         <TopBar view={view} onMenu={() => setMobileOpen(true)} theme={theme} onToggleTheme={toggleTheme} />
-        <main className="p-4 sm:p-6 max-w-[1600px] mx-auto">
+        <main className="p-4 sm:p-6 max-w-[1600px] mx-auto" style={{ paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}>
           {view === 'dashboard' && <DashboardView data={data} />}
           {view === 'expenses' && <TransactionView title="Expense Tracker" accent="#FB7185" icon="wallet" items={expenses} setItems={setExpenses} categories={EXPENSE_CATEGORIES} kind="Expense" />}
           {view === 'income' && <TransactionView title="Income Tracker" accent="#34D399" icon="trendingUp" items={incomes} setItems={setIncomes} categories={INCOME_CATEGORIES} kind="Income" />}
