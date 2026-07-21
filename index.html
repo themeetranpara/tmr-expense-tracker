@@ -268,6 +268,61 @@ function lastNMonthKeys(n: number): string[] {
   return out;
 }
 
+// ---------------------- date-range filter helpers (Expenses filter) ----------------------
+type DateFilterMode = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
+interface DateFilterState { mode: DateFilterMode; start: string; end: string; }
+
+function dateToISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Monday-start week containing `d`.
+function weekRange(d: Date): { start: string; end: string } {
+  const day = d.getDay(); // 0 = Sunday ... 6 = Saturday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMonday);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  return { start: dateToISO(monday), end: dateToISO(sunday) };
+}
+// Resolve a filter state into an inclusive [start, end] ISO range, or null bounds for "all time".
+function resolveDateRange(filter: DateFilterState): { start: string | null; end: string | null } {
+  const now = new Date();
+  switch (filter.mode) {
+    case 'today': { const t = todayISO(); return { start: t, end: t }; }
+    case 'week': return weekRange(now);
+    case 'month': { const y = now.getFullYear(), m = now.getMonth(); return { start: dateToISO(new Date(y, m, 1)), end: dateToISO(new Date(y, m + 1, 0)) }; }
+    case 'year': { const y = now.getFullYear(); return { start: `${y}-01-01`, end: `${y}-12-31` }; }
+    case 'custom': return { start: filter.start || null, end: filter.end || null };
+    case 'all':
+    default:
+      return { start: null, end: null };
+  }
+}
+function dateFilterLabel(filter: DateFilterState): string {
+  switch (filter.mode) {
+    case 'today': return 'Today';
+    case 'week': return 'This Week';
+    case 'month': return 'This Month';
+    case 'year': return 'This Year';
+    case 'custom': return filter.start && filter.end ? `${formatDate(filter.start)} – ${formatDate(filter.end)}` : 'Custom Range';
+    case 'all':
+    default:
+      return 'Total Expenses';
+  }
+}
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 1);
+const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const YEAR_OPTIONS = (() => { const y = new Date().getFullYear(); const out: number[] = []; for (let i = y - 6; i <= y + 1; i++) out.push(i); return out; })();
+function partsFromISO(iso: string): { day: number; month: number; year: number } {
+  if (iso) { const [y, m, d] = iso.split('-').map(Number); if (y && m && d) return { day: d, month: m - 1, year: y }; }
+  const t = new Date();
+  return { day: t.getDate(), month: t.getMonth(), year: t.getFullYear() };
+}
+function partsToISO(day: number, month: number, year: number): string {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
 // ---------------------- localStorage hook ----------------------
 function useLocalStorageState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const storageKey = 'tmr-expense-tracker:' + key;
@@ -313,11 +368,11 @@ const ICON_PATHS: Record<string, string> = {
   sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z',
 };
-function Icon({ name, size = 18, strokeWidth = 1.8, className = '' }: { name: string; size?: number; strokeWidth?: number; className?: string }) {
+function Icon({ name, size = 18, strokeWidth = 1.8, className = '', style }: { name: string; size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }) {
   const d = ICON_PATHS[name] || ICON_PATHS.home;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
       <path d={d} />
     </svg>
   );
@@ -627,6 +682,129 @@ function tradePnl(t: ForexTrade): number {
 }
 
 // ============================================================
+// EXPENSE DATE FILTER — Today / This Week / This Month / This Year /
+// Total Expenses / Custom Range. Used only by the Expenses view.
+// ============================================================
+function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterState; setFilter: (f: DateFilterState) => void; accent: string }) {
+  const [open, setOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const startParts0 = partsFromISO(filter.start);
+  const endParts0 = partsFromISO(filter.end);
+  const [startDay, setStartDay] = useState(startParts0.day);
+  const [startMonth, setStartMonth] = useState(startParts0.month);
+  const [startYear, setStartYear] = useState(startParts0.year);
+  const [endDay, setEndDay] = useState(endParts0.day);
+  const [endMonth, setEndMonth] = useState(endParts0.month);
+  const [endYear, setEndYear] = useState(endParts0.year);
+
+  const OPTIONS: { mode: DateFilterMode; label: string }[] = [
+    { mode: 'today', label: 'Today' },
+    { mode: 'week', label: 'This Week' },
+    { mode: 'month', label: 'This Month' },
+    { mode: 'year', label: 'This Year' },
+    { mode: 'all', label: 'Total Expenses (All Time)' },
+  ];
+
+  function choose(mode: DateFilterMode) {
+    if (mode === 'custom') return;
+    setFilter({ mode, start: '', end: '' });
+    setOpen(false);
+  }
+  function openCustom() {
+    const s = partsFromISO(filter.start || todayISO());
+    const e = partsFromISO(filter.end || todayISO());
+    setStartDay(s.day); setStartMonth(s.month); setStartYear(s.year);
+    setEndDay(e.day); setEndMonth(e.month); setEndYear(e.year);
+    setOpen(false);
+    setCustomOpen(true);
+  }
+  function applyCustom() {
+    const start = partsToISO(startDay, startMonth, startYear);
+    const end = partsToISO(endDay, endMonth, endYear);
+    const [s, e] = start <= end ? [start, end] : [end, start];
+    setFilter({ mode: 'custom', start: s, end: e });
+    setCustomOpen(false);
+  }
+  function resetCustom() {
+    const t = partsFromISO(todayISO());
+    setStartDay(t.day); setStartMonth(t.month); setStartYear(t.year);
+    setEndDay(t.day); setEndMonth(t.month); setEndYear(t.year);
+  }
+
+  const selectCls = 'bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white focus:bg-white/[0.07] transition-colors w-full';
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition-colors focus-ring">
+        <Icon name="calendar" size={14} className="text-white/40" />
+        {dateFilterLabel(filter)}
+        <Icon name="chevronRight" size={12} className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}></div>
+          <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-right shadow-2xl">
+            {OPTIONS.map(o => (
+              <button key={o.mode} onClick={() => choose(o.mode)}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === o.mode ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+                {o.label}
+                {filter.mode === o.mode ? <Icon name="check" size={14} style={{ color: accent }} /> : null}
+              </button>
+            ))}
+            <div className="h-px bg-white/10 my-1.5"></div>
+            <button onClick={openCustom}
+              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === 'custom' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+              Custom Range
+              <Icon name="chevronRight" size={12} className="text-white/30" />
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Custom Range">
+        <div className="space-y-4">
+          <div>
+            <span className="block text-xs font-medium text-white/50 mb-1.5">Start Date</span>
+            <div className="grid grid-cols-3 gap-2">
+              <select className={selectCls} value={startDay} onChange={e => setStartDay(Number(e.target.value))}>
+                {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select className={selectCls} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+                {MONTH_OPTIONS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select className={selectCls} value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-white/50 mb-1.5">End Date</span>
+            <div className="grid grid-cols-3 gap-2">
+              <select className={selectCls} value={endDay} onChange={e => setEndDay(Number(e.target.value))}>
+                {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select className={selectCls} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+                {MONTH_OPTIONS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select className={selectCls} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" onClick={applyCustom} accent={`linear-gradient(135deg,${accent},${accent})`} className="flex-1 justify-center">Apply</Button>
+            <Button type="button" variant="ghost" onClick={resetCustom} className="flex-1 justify-center">Reset</Button>
+            <Button type="button" variant="ghost" onClick={() => setCustomOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
 // GENERIC TRANSACTION VIEW (Expenses / Income)
 // ============================================================
 function TransactionView({ title, accent, icon, items, setItems, categories, kind }: {
@@ -636,10 +814,19 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
   const [editing, setEditing] = useState<any>(null);
   const [confirmId, setConfirmId] = useState<ID | null>(null);
   const [monthFilter, setMonthFilter] = useState('all');
+  const [expenseFilter, setExpenseFilter] = useLocalStorageState<DateFilterState>('expenseDateFilter', { mode: 'all', start: '', end: '' });
   const [form, setForm] = useState({ amount: '', category: categories[0], description: '', date: todayISO() });
 
+  const isExpense = kind === 'Expense';
   const months = useMemo(() => Array.from(new Set(items.map(i => monthKey(i.date)))).sort().reverse(), [items]);
-  const filtered = useMemo(() => monthFilter === 'all' ? items : items.filter(i => monthKey(i.date) === monthFilter), [items, monthFilter]);
+  const filtered = useMemo(() => {
+    if (isExpense) {
+      const { start, end } = resolveDateRange(expenseFilter);
+      if (!start && !end) return items;
+      return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
+    }
+    return monthFilter === 'all' ? items : items.filter(i => monthKey(i.date) === monthFilter);
+  }, [items, monthFilter, isExpense, expenseFilter]);
   const sorted = useMemo(() => [...filtered].sort((a, b) => (b.date > a.date ? 1 : -1)), [filtered]);
   const total = useMemo(() => filtered.reduce((s, i) => s + i.amount, 0), [filtered]);
 
@@ -691,10 +878,14 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={inputCls + ' w-40'}>
-            <option value="all">All months</option>
-            {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
+          {isExpense ? (
+            <ExpenseDateFilter filter={expenseFilter} setFilter={setExpenseFilter} accent={accent} />
+          ) : (
+            <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={inputCls + ' w-40'}>
+              <option value="all">All months</option>
+              {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            </select>
+          )}
           <Button onClick={openAdd} accent={`linear-gradient(135deg,${accent},${accent})`}><Icon name="plus" size={16} />Add {kind}</Button>
         </div>
       </div>
