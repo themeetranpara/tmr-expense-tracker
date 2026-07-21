@@ -745,7 +745,7 @@ function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterSt
       {open ? (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}></div>
-          <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-right shadow-2xl">
+          <div className="absolute left-0 right-auto sm:left-auto sm:right-0 mt-2 w-[min(16rem,calc(100vw-2rem))] sm:w-64 glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-left sm:origin-top-right shadow-2xl">
             {OPTIONS.map(o => (
               <button key={o.mode} onClick={() => choose(o.mode)}
                 className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === o.mode ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>

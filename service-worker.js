@@ -1,7 +1,7 @@
 // TMR Expense Tracker — Service Worker
 // Bump this version string whenever index.html (or any cached asset) changes,
 // so returning users get the new version instead of a stale cache.
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `tmr-expense-tracker-${CACHE_VERSION}`;
 
 // Same-origin app shell ONLY — required for the app to boot offline.
