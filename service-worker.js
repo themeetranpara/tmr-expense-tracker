@@ -1,7 +1,7 @@
 // TMR Expense Tracker — Service Worker
 // Bump this version string whenever index.html (or any cached asset) changes,
 // so returning users get the new version instead of a stale cache.
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME = `tmr-expense-tracker-${CACHE_VERSION}`;
 
 // Same-origin app shell ONLY — required for the app to boot offline.
@@ -22,6 +22,8 @@ const APP_SHELL = [
   './icons/favicon-32.png',
   './icons/favicon-16.png',
   './icons/tmr-logo.png',
+  './firebase/firebase-config.js',
+  './firebase/firebase-init.js',
 ];
 
 self.addEventListener('install', (event) => {

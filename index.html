@@ -32,6 +32,8 @@
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- Firebase Auth (Phase 1) — isolated module, see /firebase/firebase-init.js and /firebase/firebase-config.js -->
+<script type="module" src="./firebase/firebase-init-new.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -297,7 +299,7 @@ function resolveDateRange(filter: DateFilterState): { start: string | null; end:
       return { start: null, end: null };
   }
 }
-function dateFilterLabel(filter: DateFilterState): string {
+function dateFilterLabel(filter: DateFilterState, allTimeLabel: string = 'Total Expenses'): string {
   switch (filter.mode) {
     case 'today': return 'Today';
     case 'week': return 'This Week';
@@ -306,7 +308,7 @@ function dateFilterLabel(filter: DateFilterState): string {
     case 'custom': return filter.start && filter.end ? `${formatDate(filter.start)} – ${formatDate(filter.end)}` : 'Custom Range';
     case 'all':
     default:
-      return 'Total Expenses';
+      return allTimeLabel;
   }
 }
 const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -338,6 +340,59 @@ function useLocalStorageState<T>(key: string, initial: T): [T, React.Dispatch<Re
   return [state, setState];
 }
 
+// ---------------------- Firebase Auth bridge (Phase 1) ----------------------
+// This app runs as a classic (non-module) script, while Firebase lives in a
+// native ES module (see /firebase/firebase-init.js) for a clean, no-bundler
+// setup on GitHub Pages. The two sides never call each other directly —
+// firebase-init.js publishes state on window.TMRAuth and fires DOM events;
+// this hook only ever listens. That keeps Firebase entirely swappable later
+// without touching a single line of app/UI code, and sidesteps script-load
+// ordering entirely (works whether firebase-init.js finishes before or after
+// this hook mounts).
+interface AuthUser { uid: string; displayName: string | null; email: string | null; photoURL: string | null; }
+function useAuthUser() {
+  const [user, setUser] = useState<AuthUser | null>(() => (window as any).TMRAuth?.currentUser ?? null);
+  const [authReady, setAuthReady] = useState<boolean>(() => !!(window as any).TMRAuth?._ready);
+  const [signingIn, setSigningIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onChanged(e: any) { setUser(e.detail ?? null); }
+    function onReady(e: any) { setUser(e.detail ?? null); setAuthReady(true); }
+    window.addEventListener('tmr-auth-changed', onChanged);
+    window.addEventListener('tmr-auth-ready', onReady);
+    // In case firebase-init.js finished before this component ever mounted.
+    const bridge = (window as any).TMRAuth;
+    if (bridge?._ready) { setUser(bridge.currentUser ?? null); setAuthReady(true); }
+    return () => {
+      window.removeEventListener('tmr-auth-changed', onChanged);
+      window.removeEventListener('tmr-auth-ready', onReady);
+    };
+  }, []);
+
+  const signIn = useCallback(async () => {
+    const bridge = (window as any).TMRAuth;
+    if (!bridge?.signInWithGoogle) { setAuthError('Sign-in is not available yet — try again in a moment.'); return; }
+    setSigningIn(true);
+    setAuthError(null);
+    try {
+      await bridge.signInWithGoogle();
+    } catch (err: any) {
+      setAuthError(err?.message || 'Sign-in failed. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
+  const signOutUser = useCallback(async () => {
+    const bridge = (window as any).TMRAuth;
+    if (!bridge?.signOutUser) return;
+    try { await bridge.signOutUser(); } catch (err: any) { setAuthError(err?.message || 'Sign-out failed.'); }
+  }, []);
+
+  return { user, authReady, signingIn, authError, signIn, signOutUser };
+}
+
 // ---------------------- icons ----------------------
 const ICON_PATHS: Record<string, string> = {
   home: 'M3 11.5 12 4l9 7.5M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9',
@@ -367,6 +422,7 @@ const ICON_PATHS: Record<string, string> = {
   logo: 'M4 17V7l8 6 8-6v10',
   sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
 };
 function Icon({ name, size = 18, strokeWidth = 1.8, className = '', style }: { name: string; size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }) {
   const d = ICON_PATHS[name] || ICON_PATHS.home;
@@ -374,6 +430,19 @@ function Icon({ name, size = 18, strokeWidth = 1.8, className = '', style }: { n
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
       <path d={d} />
+    </svg>
+  );
+}
+
+// Standard Google "G" mark (per Google's sign-in branding guidelines) — the
+// only multi-color glyph in the app, used exclusively for "Continue with Google".
+function GoogleGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.4-.4-3.5Z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.6 15.6 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.7 0-14.4 4.4-17.7 10.7Z" />
+      <path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.5l-6.5-5.5C29.4 34.9 26.8 36 24 36c-5.3 0-9.7-3.1-11.3-7.5l-6.6 5.1C9.5 39.6 16.2 44 24 44Z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.5 5.5C39.9 37.5 44 32.5 44 24c0-1.2-.1-2.4-.4-3.5Z" />
     </svg>
   );
 }
@@ -682,10 +751,11 @@ function tradePnl(t: ForexTrade): number {
 }
 
 // ============================================================
-// EXPENSE DATE FILTER — Today / This Week / This Month / This Year /
-// Total Expenses / Custom Range. Used only by the Expenses view.
+// DATE RANGE FILTER — Today / This Week / This Month / This Year /
+// Total <X> (All Time) / Custom Range. Shared by Expenses, Income,
+// and Business Profit (NOT used by Forex Journal or Crypto Portfolio).
 // ============================================================
-function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterState; setFilter: (f: DateFilterState) => void; accent: string }) {
+function DateRangeFilter({ filter, setFilter, accent, allTimeLabel = 'Total Expenses' }: { filter: DateFilterState; setFilter: (f: DateFilterState) => void; accent: string; allTimeLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const startParts0 = partsFromISO(filter.start);
@@ -702,7 +772,7 @@ function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterSt
     { mode: 'week', label: 'This Week' },
     { mode: 'month', label: 'This Month' },
     { mode: 'year', label: 'This Year' },
-    { mode: 'all', label: 'Total Expenses (All Time)' },
+    { mode: 'all', label: `${allTimeLabel} (All Time)` },
   ];
 
   function choose(mode: DateFilterMode) {
@@ -738,7 +808,7 @@ function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterSt
       <button type="button" onClick={() => setOpen(o => !o)}
         className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition-colors focus-ring">
         <Icon name="calendar" size={14} className="text-white/40" />
-        {dateFilterLabel(filter)}
+        {dateFilterLabel(filter, allTimeLabel)}
         <Icon name="chevronRight" size={12} className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
 
@@ -807,26 +877,20 @@ function ExpenseDateFilter({ filter, setFilter, accent }: { filter: DateFilterSt
 // ============================================================
 // GENERIC TRANSACTION VIEW (Expenses / Income)
 // ============================================================
-function TransactionView({ title, accent, icon, items, setItems, categories, kind }: {
-  title: string; accent: string; icon: string; items: (Expense | Income)[]; setItems: any; categories: string[]; kind: 'Expense' | 'Income';
+function TransactionView({ title, accent, icon, items, setItems, categories, kind, filterStorageKey, allTimeLabel }: {
+  title: string; accent: string; icon: string; items: (Expense | Income)[]; setItems: any; categories: string[]; kind: 'Expense' | 'Income'; filterStorageKey: string; allTimeLabel: string;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [confirmId, setConfirmId] = useState<ID | null>(null);
-  const [monthFilter, setMonthFilter] = useState('all');
-  const [expenseFilter, setExpenseFilter] = useLocalStorageState<DateFilterState>('expenseDateFilter', { mode: 'all', start: '', end: '' });
+  const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>(filterStorageKey, { mode: 'all', start: '', end: '' });
   const [form, setForm] = useState({ amount: '', category: categories[0], description: '', date: todayISO() });
 
-  const isExpense = kind === 'Expense';
-  const months = useMemo(() => Array.from(new Set(items.map(i => monthKey(i.date)))).sort().reverse(), [items]);
   const filtered = useMemo(() => {
-    if (isExpense) {
-      const { start, end } = resolveDateRange(expenseFilter);
-      if (!start && !end) return items;
-      return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
-    }
-    return monthFilter === 'all' ? items : items.filter(i => monthKey(i.date) === monthFilter);
-  }, [items, monthFilter, isExpense, expenseFilter]);
+    const { start, end } = resolveDateRange(dateFilter);
+    if (!start && !end) return items;
+    return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
+  }, [items, dateFilter]);
   const sorted = useMemo(() => [...filtered].sort((a, b) => (b.date > a.date ? 1 : -1)), [filtered]);
   const total = useMemo(() => filtered.reduce((s, i) => s + i.amount, 0), [filtered]);
 
@@ -878,14 +942,7 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isExpense ? (
-            <ExpenseDateFilter filter={expenseFilter} setFilter={setExpenseFilter} accent={accent} />
-          ) : (
-            <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={inputCls + ' w-40'}>
-              <option value="all">All months</option>
-              {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-            </select>
-          )}
+          <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent={accent} allTimeLabel={allTimeLabel} />
           <Button onClick={openAdd} accent={`linear-gradient(135deg,${accent},${accent})`}><Icon name="plus" size={16} />Add {kind}</Button>
         </div>
       </div>
@@ -1256,16 +1313,23 @@ function BusinessView({ business, setBusiness }: { business: BusinessEntry[]; se
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BusinessEntry | null>(null);
   const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>('businessDateFilter', { mode: 'all', start: '', end: '' });
   const empty = { description: '', revenue: '', expense: '', date: todayISO() };
   const [form, setForm] = useState<any>(empty);
 
+  const dateFiltered = useMemo(() => {
+    const { start, end } = resolveDateRange(dateFilter);
+    if (!start && !end) return business;
+    return business.filter(b => (!start || b.date >= start) && (!end || b.date <= end));
+  }, [business, dateFilter]);
+
   const activeMeta = BUSINESS_TYPES.find(b => b.key === activeType)!;
-  const items = business.filter(b => b.type === activeType).sort((a, b) => (b.date > a.date ? 1 : -1));
+  const items = dateFiltered.filter(b => b.type === activeType).sort((a, b) => (b.date > a.date ? 1 : -1));
   const revenue = items.reduce((s, b) => s + b.revenue, 0);
   const expense = items.reduce((s, b) => s + b.expense, 0);
   const profit = revenue - expense;
 
-  const overviewByType = BUSINESS_TYPES.map(bt => business.filter(b => b.type === bt.key).reduce((s, b) => s + (b.revenue - b.expense), 0));
+  const overviewByType = BUSINESS_TYPES.map(bt => dateFiltered.filter(b => b.type === bt.key).reduce((s, b) => s + (b.revenue - b.expense), 0));
 
   function openAdd() { setEditing(null); setForm(empty); setModalOpen(true); }
   function openEdit(b: BusinessEntry) {
@@ -1292,9 +1356,12 @@ function BusinessView({ business, setBusiness }: { business: BusinessEntry[]; se
 
   return (
     <div className="view-enter space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: '#D4AF3722', color: '#D4AF37' }}><Icon name="briefcase" size={20} /></div>
-        <div><h2 className="text-xl font-display font-bold">Business Profit Tracker</h2><p className="text-sm text-white/40">Dropshipping · Dropservicing · Media Agency · Interest Income</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: '#D4AF3722', color: '#D4AF37' }}><Icon name="briefcase" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Business Profit Tracker</h2><p className="text-sm text-white/40">Dropshipping · Dropservicing · Media Agency · Interest Income</p></div>
+        </div>
+        <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent="#D4AF37" allTimeLabel="Total Business Profit" />
       </div>
 
       <Card>
@@ -1774,7 +1841,7 @@ function AnalyticsView({ data }: { data: any }) {
 // ============================================================
 // APP SHELL
 // ============================================================
-function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
+function Sidebar({ view, setView, mobileOpen, setMobileOpen, authUser, authReady, signingIn, authError, onSignIn, onSignOut }: any) {
   return (
     <>
       {mobileOpen ? <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setMobileOpen(false)}></div> : null}
@@ -1800,6 +1867,37 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
             </button>
           ))}
         </nav>
+
+        {authReady ? (
+          <div className="mx-3 mb-3">
+            {authUser ? (
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10">
+                {authUser.photoURL ? (
+                  <img src={authUser.photoURL} alt={authUser.displayName || 'Account'} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-400/20 text-emerald-300 flex items-center justify-center text-xs font-semibold shrink-0">
+                    {(authUser.displayName || authUser.email || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-white truncate">{authUser.displayName || 'Signed in'}</div>
+                  <div className="text-[11px] text-white/40 truncate">{authUser.email}</div>
+                </div>
+                <IconButton icon="logout" onClick={onSignOut} title="Sign out" />
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={onSignIn} disabled={signingIn}
+                  className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium text-white/80 hover:text-white transition-colors focus-ring disabled:opacity-60">
+                  {signingIn ? <span className="w-4 h-4 rounded-full border-2 border-white/25 border-t-white/80 animate-spin"></span> : <GoogleGlyph size={16} />}
+                  {signingIn ? 'Signing in…' : 'Continue with Google'}
+                </button>
+                {authError ? <div className="text-[11px] text-rose-400 mt-1.5 px-1 leading-snug">{authError}</div> : null}
+              </>
+            )}
+          </div>
+        ) : null}
+
         <div className="p-4 mx-3 rounded-xl bg-white/5 border border-white/5" style={{ marginBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
           <div className="text-xs text-white/40 leading-relaxed">All data stays on this device via LocalStorage. No accounts, no cloud.</div>
         </div>
@@ -1841,6 +1939,7 @@ function App() {
   CURRENT_THEME = theme;
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [setTheme]);
+  const { user: authUser, authReady, signingIn, authError, signIn, signOutUser } = useAuthUser();
 
   const [expenses, setExpenses] = useLocalStorageState<Expense[]>('expenses', []);
   const [incomes, setIncomes] = useLocalStorageState<Income[]>('incomes', []);
@@ -1855,13 +1954,14 @@ function App() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
+        authUser={authUser} authReady={authReady} signingIn={signingIn} authError={authError} onSignIn={signIn} onSignOut={signOutUser} />
       <div className="flex-1 min-w-0">
         <TopBar view={view} onMenu={() => setMobileOpen(true)} theme={theme} onToggleTheme={toggleTheme} />
         <main className="p-4 sm:p-6 max-w-[1600px] mx-auto" style={{ paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}>
           {view === 'dashboard' && <DashboardView data={data} />}
-          {view === 'expenses' && <TransactionView title="Expense Tracker" accent="#FB7185" icon="wallet" items={expenses} setItems={setExpenses} categories={EXPENSE_CATEGORIES} kind="Expense" />}
-          {view === 'income' && <TransactionView title="Income Tracker" accent="#34D399" icon="trendingUp" items={incomes} setItems={setIncomes} categories={INCOME_CATEGORIES} kind="Income" />}
+          {view === 'expenses' && <TransactionView title="Expense Tracker" accent="#FB7185" icon="wallet" items={expenses} setItems={setExpenses} categories={EXPENSE_CATEGORIES} kind="Expense" filterStorageKey="expenseDateFilter" allTimeLabel="Total Expenses" />}
+          {view === 'income' && <TransactionView title="Income Tracker" accent="#34D399" icon="trendingUp" items={incomes} setItems={setIncomes} categories={INCOME_CATEGORIES} kind="Income" filterStorageKey="incomeDateFilter" allTimeLabel="Total Income" />}
           {view === 'forex' && <ForexView trades={forexTrades} setTrades={setForexTrades} />}
           {view === 'crypto' && <CryptoView holdings={cryptoHoldings} setHoldings={setCryptoHoldings} />}
           {view === 'business' && <BusinessView business={business} setBusiness={setBusiness} />}
