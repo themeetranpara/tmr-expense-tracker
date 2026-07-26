@@ -33,7 +33,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Firebase Auth (Phase 1) — isolated module, see /firebase/firebase-init.js and /firebase/firebase-config.js -->
-<script type="module" src="./firebase/firebase-init-new.js"></script>
+<script type="module" src="./firebase/firebase-init.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -391,6 +391,154 @@ function useAuthUser() {
   }, []);
 
   return { user, authReady, signingIn, authError, signIn, signOutUser };
+}
+
+// ---------------------- Firestore sync (Phase 2) ----------------------
+// A stable per-browser id, generated once and reused forever. Stored
+// exactly like any other LocalStorage key. Tagged onto every Firestore
+// write as `updatedByDevice` — not used to prevent sync loops (that's
+// handled below via reference-diffing + hasPendingWrites), but stored on
+// every document specifically so a future, smarter conflict-resolution
+// pass has real per-device history to work with.
+function getOrCreateDeviceId(): string {
+  const key = 'tmr-expense-tracker:deviceId';
+  try {
+    let id = window.localStorage.getItem(key);
+    if (!id) {
+      id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      window.localStorage.setItem(key, id);
+    }
+    return id;
+  } catch (e) {
+    return 'dev_unknown';
+  }
+}
+const DEVICE_ID = getOrCreateDeviceId();
+
+// Drop-in replacement for useLocalStorageState, used ONLY by the 8 core
+// data collections (expenses, incomes, forexTrades, cryptoHoldings,
+// business, meetings, notes, goals). Behavior when signed out is
+// byte-for-byte identical to useLocalStorageState — same key, same
+// synchronous read/write, zero Firestore involvement. Signed in, it
+// additionally mirrors changes to/from Firestore in the background:
+// LocalStorage is still what every component reads and writes instantly;
+// Firestore sync never sits in front of that or delays it.
+function useSyncedCollection<T extends { id: string }>(key: string, initial: T[], collectionName: string, uid: string | null): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
+  const storageKey = 'tmr-expense-tracker:' + key;
+  const [state, setState] = useState<T[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) as T[] : initial;
+    } catch (e) { return initial; }
+  });
+
+  // Always persist to LocalStorage, exactly as before — signed in or not.
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+  }, [state]);
+
+  // The last array we know is already reconciled with Firestore (either
+  // because we just pulled it from a snapshot, or just pushed it up).
+  // The push-effect below only ever acts on entries whose object
+  // reference differs from what's in here — which is what stops a
+  // pulled remote change from immediately being re-pushed as if it were
+  // a fresh local edit.
+  const syncedRef = useRef<T[]>(state);
+  const mergedUidRef = useRef<string | null>(null);
+
+  // Pull: first-sign-in merge, then a live subscription for this uid.
+  useEffect(() => {
+    if (!uid) return;
+    const bridge = (window as any).TMRAuth;
+    if (!bridge || !bridge.firestoreSync) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      if (mergedUidRef.current !== uid) {
+        mergedUidRef.current = uid;
+        try {
+          const cloudDocs: any[] = await bridge.firestoreSync.fetchAllDocs(uid, collectionName);
+          setState((current) => {
+            const merged = new Map<string, any>(current.map((i: any) => [i.id, i]));
+            const localOnlyIds = new Set(merged.keys());
+            for (const cdoc of cloudDocs) { merged.set(cdoc.id, cdoc); localOnlyIds.delete(cdoc.id); }
+            const mergedArr = Array.from(merged.values()) as T[];
+            syncedRef.current = mergedArr;
+            // Anything that only existed locally (not yet in the cloud) gets
+            // uploaded once, so a first-time sign-in never discards local data.
+            for (const id of localOnlyIds) {
+              const item = merged.get(id);
+              bridge.firestoreSync.pushDoc(uid, collectionName, item, DEVICE_ID).catch((err: any) => {
+                console.warn(`TMR sync: initial upload failed for ${collectionName}/${id}`, err);
+              });
+            }
+            return mergedArr;
+          });
+        } catch (err) {
+          console.warn(`TMR sync: initial merge failed for ${collectionName}`, err);
+        }
+      }
+
+      if (cancelled) return;
+      unsubscribe = bridge.firestoreSync.subscribeToCollection(
+        uid,
+        collectionName,
+        (changes: any[], meta: { hasPendingWrites: boolean; fromCache: boolean }) => {
+          if (cancelled || meta.hasPendingWrites) return; // our own optimistic write echoing back
+          setState((current) => {
+            const map = new Map<string, any>(current.map((i: any) => [i.id, i]));
+            for (const change of changes) {
+              if (change._deleted) map.delete(change.id);
+              else map.set(change.id, change);
+            }
+            const next = Array.from(map.values()) as T[];
+            syncedRef.current = next;
+            return next;
+          });
+        },
+        (err: any) => console.warn(`TMR sync: subscription error on ${collectionName}`, err)
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+    // eslint-disable-next-line
+  }, [uid, collectionName]);
+
+  // Push: diff the current array against the last-known-synced array by
+  // object reference (not deep equality) — cheap, and correct because
+  // every add/edit in this app already creates new object references via
+  // spreads (see the various setItems(prev => ...) calls throughout).
+  useEffect(() => {
+    if (!uid) { syncedRef.current = state; return; }
+    const bridge = (window as any).TMRAuth;
+    if (!bridge || !bridge.firestoreSync) return;
+
+    const prevArr = syncedRef.current;
+    const prevMap = new Map<string, any>(prevArr.map((i: any) => [i.id, i]));
+    const nextMap = new Map<string, any>(state.map((i: any) => [i.id, i]));
+
+    for (const [id, item] of nextMap) {
+      if (prevMap.get(id) !== item) {
+        bridge.firestoreSync.pushDoc(uid, collectionName, item, DEVICE_ID).catch((err: any) => {
+          console.warn(`TMR sync: push failed for ${collectionName}/${id}`, err);
+        });
+      }
+    }
+    for (const id of prevMap.keys()) {
+      if (!nextMap.has(id)) {
+        bridge.firestoreSync.deleteRemoteDoc(uid, collectionName, id).catch((err: any) => {
+          console.warn(`TMR sync: remote delete failed for ${collectionName}/${id}`, err);
+        });
+      }
+    }
+    syncedRef.current = state;
+  }, [state, uid, collectionName]);
+
+  return [state, setState];
 }
 
 // ---------------------- icons ----------------------
@@ -1941,14 +2089,15 @@ function App() {
   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [setTheme]);
   const { user: authUser, authReady, signingIn, authError, signIn, signOutUser } = useAuthUser();
 
-  const [expenses, setExpenses] = useLocalStorageState<Expense[]>('expenses', []);
-  const [incomes, setIncomes] = useLocalStorageState<Income[]>('incomes', []);
-  const [forexTrades, setForexTrades] = useLocalStorageState<ForexTrade[]>('forexTrades', []);
-  const [cryptoHoldings, setCryptoHoldings] = useLocalStorageState<CryptoHolding[]>('cryptoHoldings', []);
-  const [business, setBusiness] = useLocalStorageState<BusinessEntry[]>('business', []);
-  const [meetings, setMeetings] = useLocalStorageState<Meeting[]>('meetings', []);
-  const [notes, setNotes] = useLocalStorageState<Note[]>('notes', []);
-  const [goals, setGoals] = useLocalStorageState<Goal[]>('goals', []);
+  const uid = authUser?.uid ?? null;
+  const [expenses, setExpenses] = useSyncedCollection<Expense>('expenses', [], 'expenses', uid);
+  const [incomes, setIncomes] = useSyncedCollection<Income>('incomes', [], 'incomes', uid);
+  const [forexTrades, setForexTrades] = useSyncedCollection<ForexTrade>('forexTrades', [], 'forexTrades', uid);
+  const [cryptoHoldings, setCryptoHoldings] = useSyncedCollection<CryptoHolding>('cryptoHoldings', [], 'cryptoHoldings', uid);
+  const [business, setBusiness] = useSyncedCollection<BusinessEntry>('business', [], 'business', uid);
+  const [meetings, setMeetings] = useSyncedCollection<Meeting>('meetings', [], 'meetings', uid);
+  const [notes, setNotes] = useSyncedCollection<Note>('notes', [], 'notes', uid);
+  const [goals, setGoals] = useSyncedCollection<Goal>('goals', [], 'goals', uid);
 
   const data = { expenses, incomes, forexTrades, cryptoHoldings, business, meetings, notes, goals };
 
