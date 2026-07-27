@@ -2054,7 +2054,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen, authUser, authReady
   );
 }
 
-function TopBar({ view, onMenu, theme, onToggleTheme }: { view: string; onMenu: () => void; theme: 'dark' | 'light'; onToggleTheme: () => void }) {
+function TopBar({ view, onMenu, theme, onToggleTheme, authUser }: { view: string; onMenu: () => void; theme: 'dark' | 'light'; onToggleTheme: () => void; authUser: { displayName: string | null; email: string | null } | null }) {
   const meta = MODULES.find(m => m.key === view)!;
   const [now] = useState(new Date());
   return (
@@ -2072,7 +2072,7 @@ function TopBar({ view, onMenu, theme, onToggleTheme }: { view: string; onMenu: 
       <div className="flex items-center gap-3">
         <div className="hidden sm:flex items-center gap-2 pulse rounded-full">
           <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span className="text-xs text-white/50">Synced locally</span>
+          <span className="text-xs text-white/50">{authUser ? 'Synced to cloud' : 'Synced locally'}</span>
         </div>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
@@ -2106,7 +2106,7 @@ function App() {
       <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
         authUser={authUser} authReady={authReady} signingIn={signingIn} authError={authError} onSignIn={signIn} onSignOut={signOutUser} />
       <div className="flex-1 min-w-0">
-        <TopBar view={view} onMenu={() => setMobileOpen(true)} theme={theme} onToggleTheme={toggleTheme} />
+        <TopBar view={view} onMenu={() => setMobileOpen(true)} theme={theme} onToggleTheme={toggleTheme} authUser={authUser} />
         <main className="p-4 sm:p-6 max-w-[1600px] mx-auto" style={{ paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}>
           {view === 'dashboard' && <DashboardView data={data} />}
           {view === 'expenses' && <TransactionView title="Expense Tracker" accent="#FB7185" icon="wallet" items={expenses} setItems={setExpenses} categories={EXPENSE_CATEGORIES} kind="Expense" filterStorageKey="expenseDateFilter" allTimeLabel="Total Expenses" />}
@@ -2147,6 +2147,18 @@ root.render(<App />);
 <!-- PWA: register service worker (relative path so it works under a GitHub Pages subpath) -->
 <script>
   if ('serviceWorker' in navigator) {
+    // When a new service worker takes control (i.e. we just deployed an
+    // update), reload once so this tab/installed PWA actually picks up the
+    // new index.html + app code instead of continuing to run the old
+    // version from memory until the user happens to manually refresh.
+    // Without this, skipWaiting()/clients.claim() in service-worker.js only
+    // affect *future* loads — an already-open page keeps running old JS.
+    let tmrSwRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (tmrSwRefreshing) return;
+      tmrSwRefreshing = true;
+      window.location.reload();
+    });
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('./service-worker.js').catch(function (err) {
         console.warn('Service worker registration failed:', err);

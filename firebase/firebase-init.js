@@ -1,24 +1,27 @@
-
-// ===========================================================
+// ============================================================
+// TMR Expense Tracker — Firebase Init (Phase 1 auth + Phase 2 additions)
+// ============================================================
 // What this file does:
 //   1. Initializes the Firebase app from firebase-config.js
-//   2. Sets up Firebase Authentication with Google Sign-In
-//   3. Initializes Firestore — created but never read from or
-//      written to in this phase. It's just ready for Phase 2.
-//   4. Exposes a small, stable API on `window.TMRAuth` so the
-//      main app (a classic script, not a module) can use auth
-//      without needing to become a module itself or bundle anything.
+//   2. Sets up Firebase Authentication with Google Sign-In (unchanged from Phase 1)
+//   3. Initializes Firestore WITH offline persistence (IndexedDB-backed),
+//      where the browser supports it — falling back to an in-memory-only
+//      instance otherwise, so the app never breaks on unsupported browsers.
+//   4. On sign-in, bootstraps that user's users/{uid} profile document.
+//   5. Exposes a small, stable API on `window.TMRAuth` so the main app
+//      (a classic script, not a module) can use auth/Firestore without
+//      needing to become a module itself or bundle anything.
 //
-// What this file deliberately does NOT do:
-//   - No Firestore reads or writes
-//   - No changes to LocalStorage
-//   - No changes to any existing app data or UI
+// Actual per-collection sync logic (expenses, income, etc.) lives in
+// firestore-sync.js, kept separate on purpose — this file only owns
+// Firebase bootstrapping (app/auth/firestore/profile), nothing else.
 //
 // This is a native ES module — no build step, no bundler. It runs
 // as-is on GitHub Pages or any static host.
 // ============================================================
 
 import { firebaseConfig } from './firebase-config.js';
+import { ensureProfileDocument } from './firestore-sync.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import {
   getAuth,
@@ -31,12 +34,38 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
-import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-// Firestore is initialized only — intentionally unused until Phase 2.
-const db = getFirestore(app);
+
+// Firestore, with its own offline cache (IndexedDB) on top of our existing
+// LocalStorage-first architecture. This does NOT change how the app reads/
+// writes data day-to-day — LocalStorage remains what the UI reads from
+// instantly (see useSyncedCollection in index.html). This is purely so
+// Firestore itself can also queue writes/reads while offline and reconcile
+// once back online, which is what makes multi-tab and offline-then-reconnect
+// sync robust.
+//
+// persistentMultipleTabManager lets several open tabs/windows share one
+// offline cache instead of fighting over it. If the browser doesn't support
+// this (e.g. some private-browsing modes), we fall back to a plain
+// in-memory Firestore instance rather than letting the app fail to load.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (err) {
+  console.warn('TMR Firestore: offline persistence unavailable in this browser, using in-memory cache instead.', err);
+  db = getFirestore(app);
+}
+
 const googleProvider = new GoogleAuthProvider();
 
 function serializeUser(u) {
@@ -55,11 +84,12 @@ function notify(user) {
   window.dispatchEvent(new CustomEvent('tmr-auth-changed', { detail: user }));
 }
 
-// Public bridge consumed by the app's TSX (see the useAuthUser hook in index.html).
+// Public bridge consumed by the app's TSX (see the useAuthUser / useSyncedCollection
+// hooks in index.html).
 window.TMRAuth = window.TMRAuth || {};
 window.TMRAuth.currentUser = null;
 window.TMRAuth.auth = auth;
-window.TMRAuth.db = db; // reserved for Phase 2 — do not use yet
+window.TMRAuth.db = db;
 
 // Continue with Google. Tries a popup first (best experience on desktop
 // Safari/Chrome); falls back to a full-page redirect when a popup can't
@@ -112,6 +142,17 @@ window.TMRAuth.signOutUser = function signOutUser() {
   onAuthStateChanged(auth, (u) => {
     const user = serializeUser(u);
     notify(user);
+
+    if (user) {
+      // Fire-and-forget: creates users/{uid} on first sign-in, or quietly
+      // refreshes the identity fields on subsequent sign-ins. Never blocks
+      // auth-state notification, and never touches LocalStorage or any
+      // existing app data.
+      ensureProfileDocument(user.uid, user).catch((err) => {
+        console.warn('TMR Firestore: could not create/update profile document', err);
+      });
+    }
+
     if (!window.TMRAuth._ready) {
       window.TMRAuth._ready = true;
       // Fired exactly once, after the very first auth state is known, so the
