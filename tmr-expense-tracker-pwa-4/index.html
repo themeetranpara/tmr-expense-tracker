@@ -1,0 +1,2275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>TMR Expense Tracker</title>
+<meta name="description" content="Premium personal finance dashboard — expenses, income, forex journal, crypto portfolio, business profit, scheduler, notes and goals. All data stays on your device." />
+
+<!-- PWA: manifest -->
+<link rel="manifest" href="./manifest.json" />
+
+<!-- PWA: theme color (address bar / status bar tint) -->
+<meta name="theme-color" content="#0A0B0E" />
+
+<!-- PWA: generic icons / favicons -->
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+
+<!-- PWA: iOS / Safari specific (Android reads the manifest instead) -->
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="TMR Tracker" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Firebase Auth (Phase 1) — isolated module, see /firebase/firebase-init.js and /firebase/firebase-config.js -->
+<script type="module" src="./firebase/firebase-init.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Manrope', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+        },
+        colors: {
+          base: '#0A0B0E',
+          surface: '#111318',
+          panel: '#15171D',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  :root{
+    --emerald:#34D399; --emerald-dim:#10B981;
+    --gold:#D4AF37;
+    --indigo:#818CF8;
+    --amber:#F59E0B;
+    --rose:#FB7185;
+    --sky:#38BDF8;
+    --violet:#A78BFA;
+    --pink:#F472B6;
+    --border:rgba(255,255,255,0.08);
+    --border-soft:rgba(255,255,255,0.05);
+    color-scheme: dark;
+    /* iOS safe-area insets (0px on non-notched devices and regular browser tabs) */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+  [data-theme="light"]{ color-scheme: light; }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    /* Shift the whole app in from the sides in landscape on notched iPhones,
+       without touching any component's own padding/layout. */
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(52,211,153,0.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(129,140,248,0.10), transparent 60%),
+      #0A0B0E;
+    color:#F5F5F7;
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    transition:background-color .3s ease, color .3s ease;
+  }
+  [data-theme="light"] body{
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(52,211,153,0.14), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(129,140,248,0.12), transparent 60%),
+      #F3F4F6;
+    color:#14161B;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:8px;}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.2);}
+  ::selection{background:rgba(52,211,153,0.3);}
+  .font-display{font-family:'Manrope',sans-serif;}
+  .glass{
+    background:rgba(255,255,255,0.035);
+    border:1px solid var(--border);
+    backdrop-filter:blur(20px);
+    -webkit-backdrop-filter:blur(20px);
+  }
+  .glass-strong{
+    background:rgba(255,255,255,0.055);
+    border:1px solid var(--border);
+    backdrop-filter:blur(24px);
+    -webkit-backdrop-filter:blur(24px);
+  }
+  .tabular-nums{font-variant-numeric:tabular-nums;}
+  .focus-ring:focus-visible{outline:2px solid var(--emerald);outline-offset:2px;}
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible{
+    outline:2px solid var(--emerald); outline-offset:1px;
+  }
+  @keyframes fadeSlideIn{
+    from{opacity:0; transform:translateY(8px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  .view-enter{animation:fadeSlideIn .35s cubic-bezier(.16,1,.3,1);}
+  @keyframes popIn{
+    from{opacity:0; transform:scale(.96);}
+    to{opacity:1; transform:scale(1);}
+  }
+  .modal-pop{animation:popIn .22s cubic-bezier(.16,1,.3,1);}
+  @keyframes pulseRing{
+    0%{box-shadow:0 0 0 0 rgba(52,211,153,0.35);}
+    100%{box-shadow:0 0 0 14px rgba(52,211,153,0);}
+  }
+  .pulse{animation:pulseRing 2.2s cubic-bezier(.16,1,.3,1) infinite;}
+  @media (prefers-reduced-motion: reduce){
+    .view-enter,.modal-pop,.pulse{animation:none !important;}
+  }
+  .scrollbar-thin::-webkit-scrollbar{width:6px;}
+  .card-hover{transition:transform .25s cubic-bezier(.16,1,.3,1), border-color .25s ease, box-shadow .25s ease;}
+  .card-hover:hover{transform:translateY(-2px); border-color:rgba(255,255,255,0.16); box-shadow:0 12px 32px -12px rgba(0,0,0,0.5);}
+  .nav-item{position:relative; transition:color .2s ease, background .2s ease;}
+  .nav-item[data-active="true"]{background:rgba(255,255,255,0.06);}
+  .nav-item[data-active="true"] .nav-dot{opacity:1; transform:scale(1);}
+  .nav-dot{transition:all .25s cubic-bezier(.16,1,.3,1); opacity:0; transform:scale(.4);}
+  .masonry{column-count:1;column-gap:16px;}
+  @media(min-width:768px){.masonry{column-count:2;}}
+  @media(min-width:1280px){.masonry{column-count:3;}}
+  .masonry > *{break-inside:avoid; margin-bottom:16px;}
+
+  /* ===================== Light theme overrides ===================== */
+  [data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(15,23,32,0.15);}
+  [data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(15,23,32,0.28);}
+  [data-theme="light"] ::selection{background:rgba(16,185,129,0.22);}
+
+  [data-theme="light"] .glass{
+    background:rgba(15,23,32,0.035);
+    border:1px solid rgba(15,23,32,0.08);
+    box-shadow:0 1px 2px rgba(15,23,32,0.03);
+  }
+  [data-theme="light"] .glass-strong{
+    background:rgba(255,255,255,0.7);
+    border:1px solid rgba(15,23,32,0.08);
+  }
+  [data-theme="light"] .card-hover:hover{
+    box-shadow:0 12px 28px -14px rgba(15,23,32,0.18);
+    border-color:rgba(15,23,32,0.14);
+  }
+  [data-theme="light"] .nav-item[data-active="true"]{background:rgba(15,23,32,0.05);}
+
+  /* Tailwind utility overrides — higher specificity than Tailwind's own single-class rules */
+  [data-theme="light"] .text-white{color:#14161B;}
+  [data-theme="light"] .text-white\/25{color:rgba(20,22,27,.4);}
+  [data-theme="light"] .text-white\/30{color:rgba(20,22,27,.45);}
+  [data-theme="light"] .text-white\/40{color:rgba(20,22,27,.52);}
+  [data-theme="light"] .text-white\/50{color:rgba(20,22,27,.6);}
+  [data-theme="light"] .text-white\/60{color:rgba(20,22,27,.68);}
+  [data-theme="light"] .text-white\/70{color:rgba(20,22,27,.75);}
+  [data-theme="light"] .text-white\/80{color:rgba(20,22,27,.85);}
+  [data-theme="light"] .bg-white{background-color:#ffffff;}
+  [data-theme="light"] .bg-white\/5{background-color:rgba(15,23,32,0.04);}
+  [data-theme="light"] .bg-white\/10{background-color:rgba(15,23,32,0.07);}
+  [data-theme="light"] .border-white\/5{border-color:rgba(15,23,32,0.06);}
+  [data-theme="light"] .border-white\/10{border-color:rgba(15,23,32,0.1);}
+  [data-theme="light"] .placeholder-white\/30::placeholder{color:rgba(20,22,27,.35);}
+  [data-theme="light"] .hover\:bg-white:hover{background-color:#ffffff;}
+  [data-theme="light"] .hover\:bg-white\/5:hover{background-color:rgba(15,23,32,0.05);}
+  [data-theme="light"] .hover\:bg-white\/10:hover{background-color:rgba(15,23,32,0.08);}
+  [data-theme="light"] .hover\:text-white:hover{color:#14161B;}
+  [data-theme="light"] .hover\:text-white\/50:hover{color:rgba(20,22,27,.62);}
+  [data-theme="light"] .hover\:text-white\/80:hover{color:rgba(20,22,27,.85);}
+  [data-theme="light"] .focus\:bg-white:focus{background-color:#ffffff;}
+</style>
+</head>
+<body class="font-body">
+<div id="root"></div>
+
+<script type="text/plain" id="app-source">
+// ===================== TMR Expense Tracker =====================
+// Personal finance operating system. Local-only, LocalStorage persisted.
+// No auth / accounts / payments — single-user personal tool.
+
+type ID = string;
+
+interface Expense { id: ID; amount: number; category: string; description: string; date: string; }
+interface Income { id: ID; amount: number; category: string; description: string; date: string; }
+interface ForexTrade {
+  id: ID; pair: string; direction: 'Buy' | 'Sell'; entryPrice: number; exitPrice: number | null;
+  lotSize: number; status: 'Open' | 'Closed'; date: string; notes: string;
+}
+interface CryptoHolding { id: ID; coin: string; symbol: string; quantity: number; avgBuyPrice: number; currentPrice: number; date: string; }
+// Legacy fixed business categories (pre-existing entries only). No longer
+// written by new code, but kept in the type + mapping tables below so old
+// entries keep displaying correctly forever without ever being rewritten.
+type LegacyBusinessType = 'dropshipping' | 'dropservicing' | 'mediaAgency' | 'interestIncome';
+// New flexible model: a required Online/Offline type + an optional free-text category.
+type BusinessType = 'online' | 'offline';
+interface BusinessEntry {
+  id: ID;
+  businessType?: BusinessType;     // required for entries created going forward; optional in the type since legacy entries won't have it
+  category?: string;               // free text, optional
+  type?: LegacyBusinessType;       // legacy field — only ever present on entries created before this update; never written by new code
+  description: string; revenue: number; expense: number; date: string;
+}
+interface Meeting { id: ID; title: string; date: string; time: string; notes: string; reminder: boolean; completed: boolean; }
+interface Note { id: ID; title: string; content: string; pinned: boolean; date: string; tags: string[]; }
+interface Goal { id: ID; title: string; category: string; targetAmount: number; currentAmount: number; deadline: string; notes: string; }
+
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// ---------------------- constants ----------------------
+const EXPENSE_CATEGORIES = ['Food & Dining','Transport','Housing','Utilities','Entertainment','Health & Fitness','Shopping','Education','Business','Given to Someone','Other'];
+const INCOME_CATEGORIES = ['Salary','Freelance','Business','Investment','Gifts','Other'];
+const GOAL_CATEGORIES = ['Savings','Travel','Emergency Fund','Investment','Purchase','Other'];
+
+// The only two Business Type options going forward.
+const BUSINESS_TYPE_OPTIONS: { key: BusinessType; label: string; color: string }[] = [
+  { key: 'online', label: 'Online Business', color: '#34D399' },
+  { key: 'offline', label: 'Offline Business', color: '#818CF8' },
+];
+// One-time, read-only mapping so entries created before this update keep
+// showing their original meaning under the new Type + Category model —
+// nothing is rewritten in storage, this only affects how they're *displayed*
+// and grouped until/unless the user edits and re-saves one of them.
+const LEGACY_TYPE_TO_BUSINESS_TYPE: Record<LegacyBusinessType, BusinessType> = {
+  dropshipping: 'online',
+  dropservicing: 'online',
+  mediaAgency: 'online',
+  interestIncome: 'offline',
+};
+const LEGACY_TYPE_LABEL: Record<LegacyBusinessType, string> = {
+  dropshipping: 'Dropshipping',
+  dropservicing: 'Dropservicing',
+  mediaAgency: 'Media Agency',
+  interestIncome: 'Interest Income',
+};
+// Resolves the effective Business Type for ANY entry, old or new, without
+// ever mutating the entry itself.
+function resolveBusinessType(entry: BusinessEntry): BusinessType {
+  if (entry.businessType === 'online' || entry.businessType === 'offline') return entry.businessType;
+  if (entry.type && LEGACY_TYPE_TO_BUSINESS_TYPE[entry.type]) return LEGACY_TYPE_TO_BUSINESS_TYPE[entry.type];
+  return 'online';
+}
+// Resolves the effective display category — a legacy entry's old fixed
+// category (e.g. "Dropshipping") becomes its category text automatically.
+function resolveBusinessCategory(entry: BusinessEntry): string {
+  if (entry.category && entry.category.trim()) return entry.category.trim();
+  if (entry.type && LEGACY_TYPE_LABEL[entry.type]) return LEGACY_TYPE_LABEL[entry.type];
+  return '';
+}
+const CHART_PALETTE = ['#34D399','#818CF8','#F59E0B','#F472B6','#38BDF8','#A78BFA','#FB7185','#4ADE80','#FACC15','#22D3EE'];
+
+
+const MODULES = [
+  { key: 'dashboard', label: 'Dashboard', color: '#34D399', icon: 'home' },
+  { key: 'expenses', label: 'Expenses', color: '#FB7185', icon: 'wallet' },
+  { key: 'income', label: 'Income', color: '#34D399', icon: 'trendingUp' },
+  { key: 'forex', label: 'Forex Journal', color: '#818CF8', icon: 'activity' },
+  { key: 'crypto', label: 'Crypto Portfolio', color: '#F59E0B', icon: 'coin' },
+  { key: 'business', label: 'Business Profit', color: '#D4AF37', icon: 'briefcase' },
+  { key: 'scheduler', label: 'Scheduler', color: '#38BDF8', icon: 'calendar' },
+  { key: 'notes', label: 'Notes', color: '#A78BFA', icon: 'notes' },
+  { key: 'goals', label: 'Goals', color: '#F472B6', icon: 'target' },
+  { key: 'analytics', label: 'Analytics', color: '#4ADE80', icon: 'chart' },
+];
+
+// ---------------------- utils ----------------------
+function uid(): ID { return Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
+function todayISO(): string { return new Date().toISOString().slice(0, 10); }
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+function formatINR(n: number): string { return inr.format(Number.isFinite(n) ? n : 0); }
+function formatNum(n: number, digits = 2): string { return Number.isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: 0 }) : '0'; }
+function formatDate(d: string): string {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function monthKey(d: string): string { return (d || '').slice(0, 7); }
+function monthLabel(key: string): string {
+  const [y, m] = key.split('-').map(Number);
+  if (!y || !m) return key;
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+}
+function lastNMonthKeys(n: number): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+// ---------------------- date-range filter helpers (Expenses filter) ----------------------
+type DateFilterMode = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
+interface DateFilterState { mode: DateFilterMode; start: string; end: string; }
+
+function dateToISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Monday-start week containing `d`.
+function weekRange(d: Date): { start: string; end: string } {
+  const day = d.getDay(); // 0 = Sunday ... 6 = Saturday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMonday);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  return { start: dateToISO(monday), end: dateToISO(sunday) };
+}
+// Resolve a filter state into an inclusive [start, end] ISO range, or null bounds for "all time".
+function resolveDateRange(filter: DateFilterState): { start: string | null; end: string | null } {
+  const now = new Date();
+  switch (filter.mode) {
+    case 'today': { const t = todayISO(); return { start: t, end: t }; }
+    case 'week': return weekRange(now);
+    case 'month': { const y = now.getFullYear(), m = now.getMonth(); return { start: dateToISO(new Date(y, m, 1)), end: dateToISO(new Date(y, m + 1, 0)) }; }
+    case 'year': { const y = now.getFullYear(); return { start: `${y}-01-01`, end: `${y}-12-31` }; }
+    case 'custom': return { start: filter.start || null, end: filter.end || null };
+    case 'all':
+    default:
+      return { start: null, end: null };
+  }
+}
+function dateFilterLabel(filter: DateFilterState, allTimeLabel: string = 'Total Expenses'): string {
+  switch (filter.mode) {
+    case 'today': return 'Today';
+    case 'week': return 'This Week';
+    case 'month': return 'This Month';
+    case 'year': return 'This Year';
+    case 'custom': return filter.start && filter.end ? `${formatDate(filter.start)} – ${formatDate(filter.end)}` : 'Custom Range';
+    case 'all':
+    default:
+      return allTimeLabel;
+  }
+}
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 1);
+const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const YEAR_OPTIONS = (() => { const y = new Date().getFullYear(); const out: number[] = []; for (let i = y - 6; i <= y + 1; i++) out.push(i); return out; })();
+function partsFromISO(iso: string): { day: number; month: number; year: number } {
+  if (iso) { const [y, m, d] = iso.split('-').map(Number); if (y && m && d) return { day: d, month: m - 1, year: y }; }
+  const t = new Date();
+  return { day: t.getDate(), month: t.getMonth(), year: t.getFullYear() };
+}
+function partsToISO(day: number, month: number, year: number): string {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
+// ---------------------- localStorage hook ----------------------
+function useLocalStorageState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const storageKey = 'tmr-expense-tracker:' + key;
+  const [state, setState] = useState<T>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) as T : initial;
+    } catch (e) { return initial; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+  }, [state]);
+  return [state, setState];
+}
+
+// ---------------------- Firebase Auth bridge (Phase 1) ----------------------
+// This app runs as a classic (non-module) script, while Firebase lives in a
+// native ES module (see /firebase/firebase-init.js) for a clean, no-bundler
+// setup on GitHub Pages. The two sides never call each other directly —
+// firebase-init.js publishes state on window.TMRAuth and fires DOM events;
+// this hook only ever listens. That keeps Firebase entirely swappable later
+// without touching a single line of app/UI code, and sidesteps script-load
+// ordering entirely (works whether firebase-init.js finishes before or after
+// this hook mounts).
+interface AuthUser { uid: string; displayName: string | null; email: string | null; photoURL: string | null; }
+function useAuthUser() {
+  const [user, setUser] = useState<AuthUser | null>(() => (window as any).TMRAuth?.currentUser ?? null);
+  const [authReady, setAuthReady] = useState<boolean>(() => !!(window as any).TMRAuth?._ready);
+  const [signingIn, setSigningIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onChanged(e: any) { setUser(e.detail ?? null); }
+    function onReady(e: any) { setUser(e.detail ?? null); setAuthReady(true); }
+    window.addEventListener('tmr-auth-changed', onChanged);
+    window.addEventListener('tmr-auth-ready', onReady);
+    // In case firebase-init.js finished before this component ever mounted.
+    const bridge = (window as any).TMRAuth;
+    if (bridge?._ready) { setUser(bridge.currentUser ?? null); setAuthReady(true); }
+    return () => {
+      window.removeEventListener('tmr-auth-changed', onChanged);
+      window.removeEventListener('tmr-auth-ready', onReady);
+    };
+  }, []);
+
+  const signIn = useCallback(async () => {
+    const bridge = (window as any).TMRAuth;
+    if (!bridge?.signInWithGoogle) { setAuthError('Sign-in is not available yet — try again in a moment.'); return; }
+    setSigningIn(true);
+    setAuthError(null);
+    try {
+      await bridge.signInWithGoogle();
+    } catch (err: any) {
+      setAuthError(err?.message || 'Sign-in failed. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
+  const signOutUser = useCallback(async () => {
+    const bridge = (window as any).TMRAuth;
+    if (!bridge?.signOutUser) return;
+    try { await bridge.signOutUser(); } catch (err: any) { setAuthError(err?.message || 'Sign-out failed.'); }
+  }, []);
+
+  return { user, authReady, signingIn, authError, signIn, signOutUser };
+}
+
+// ---------------------- Firestore sync (Phase 2) ----------------------
+// A stable per-browser id, generated once and reused forever. Stored
+// exactly like any other LocalStorage key. Tagged onto every Firestore
+// write as `updatedByDevice` — not used to prevent sync loops (that's
+// handled below via reference-diffing + hasPendingWrites), but stored on
+// every document specifically so a future, smarter conflict-resolution
+// pass has real per-device history to work with.
+function getOrCreateDeviceId(): string {
+  const key = 'tmr-expense-tracker:deviceId';
+  try {
+    let id = window.localStorage.getItem(key);
+    if (!id) {
+      id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      window.localStorage.setItem(key, id);
+    }
+    return id;
+  } catch (e) {
+    return 'dev_unknown';
+  }
+}
+const DEVICE_ID = getOrCreateDeviceId();
+
+// Drop-in replacement for useLocalStorageState, used ONLY by the 8 core
+// data collections (expenses, incomes, forexTrades, cryptoHoldings,
+// business, meetings, notes, goals). Behavior when signed out is
+// byte-for-byte identical to useLocalStorageState — same key, same
+// synchronous read/write, zero Firestore involvement. Signed in, it
+// additionally mirrors changes to/from Firestore in the background:
+// LocalStorage is still what every component reads and writes instantly;
+// Firestore sync never sits in front of that or delays it.
+function useSyncedCollection<T extends { id: string }>(key: string, initial: T[], collectionName: string, uid: string | null): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
+  const storageKey = 'tmr-expense-tracker:' + key;
+  const [state, setState] = useState<T[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) as T[] : initial;
+    } catch (e) { return initial; }
+  });
+
+  // Always persist to LocalStorage, exactly as before — signed in or not.
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+  }, [state]);
+
+  // The last array we know is already reconciled with Firestore (either
+  // because we just pulled it from a snapshot, or just pushed it up).
+  // The push-effect below only ever acts on entries whose object
+  // reference differs from what's in here — which is what stops a
+  // pulled remote change from immediately being re-pushed as if it were
+  // a fresh local edit.
+  const syncedRef = useRef<T[]>(state);
+  const mergedUidRef = useRef<string | null>(null);
+
+  // Pull: first-sign-in merge, then a live subscription for this uid.
+  useEffect(() => {
+    if (!uid) return;
+    const bridge = (window as any).TMRAuth;
+    if (!bridge || !bridge.firestoreSync) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      if (mergedUidRef.current !== uid) {
+        mergedUidRef.current = uid;
+        try {
+          const cloudDocs: any[] = await bridge.firestoreSync.fetchAllDocs(uid, collectionName);
+          setState((current) => {
+            const merged = new Map<string, any>(current.map((i: any) => [i.id, i]));
+            const localOnlyIds = new Set(merged.keys());
+            for (const cdoc of cloudDocs) { merged.set(cdoc.id, cdoc); localOnlyIds.delete(cdoc.id); }
+            const mergedArr = Array.from(merged.values()) as T[];
+            syncedRef.current = mergedArr;
+            // Anything that only existed locally (not yet in the cloud) gets
+            // uploaded once, so a first-time sign-in never discards local data.
+            for (const id of localOnlyIds) {
+              const item = merged.get(id);
+              bridge.firestoreSync.pushDoc(uid, collectionName, item, DEVICE_ID).catch((err: any) => {
+                console.warn(`TMR sync: initial upload failed for ${collectionName}/${id}`, err);
+              });
+            }
+            return mergedArr;
+          });
+        } catch (err) {
+          console.warn(`TMR sync: initial merge failed for ${collectionName}`, err);
+        }
+      }
+
+      if (cancelled) return;
+      unsubscribe = bridge.firestoreSync.subscribeToCollection(
+        uid,
+        collectionName,
+        (changes: any[], meta: { hasPendingWrites: boolean; fromCache: boolean }) => {
+          if (cancelled || meta.hasPendingWrites) return; // our own optimistic write echoing back
+          setState((current) => {
+            const map = new Map<string, any>(current.map((i: any) => [i.id, i]));
+            for (const change of changes) {
+              if (change._deleted) map.delete(change.id);
+              else map.set(change.id, change);
+            }
+            const next = Array.from(map.values()) as T[];
+            syncedRef.current = next;
+            return next;
+          });
+        },
+        (err: any) => console.warn(`TMR sync: subscription error on ${collectionName}`, err)
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+    // eslint-disable-next-line
+  }, [uid, collectionName]);
+
+  // Push: diff the current array against the last-known-synced array by
+  // object reference (not deep equality) — cheap, and correct because
+  // every add/edit in this app already creates new object references via
+  // spreads (see the various setItems(prev => ...) calls throughout).
+  useEffect(() => {
+    if (!uid) { syncedRef.current = state; return; }
+    const bridge = (window as any).TMRAuth;
+    if (!bridge || !bridge.firestoreSync) return;
+
+    const prevArr = syncedRef.current;
+    const prevMap = new Map<string, any>(prevArr.map((i: any) => [i.id, i]));
+    const nextMap = new Map<string, any>(state.map((i: any) => [i.id, i]));
+
+    for (const [id, item] of nextMap) {
+      if (prevMap.get(id) !== item) {
+        bridge.firestoreSync.pushDoc(uid, collectionName, item, DEVICE_ID).catch((err: any) => {
+          console.warn(`TMR sync: push failed for ${collectionName}/${id}`, err);
+        });
+      }
+    }
+    for (const id of prevMap.keys()) {
+      if (!nextMap.has(id)) {
+        bridge.firestoreSync.deleteRemoteDoc(uid, collectionName, id).catch((err: any) => {
+          console.warn(`TMR sync: remote delete failed for ${collectionName}/${id}`, err);
+        });
+      }
+    }
+    syncedRef.current = state;
+  }, [state, uid, collectionName]);
+
+  return [state, setState];
+}
+
+// ---------------------- icons ----------------------
+const ICON_PATHS: Record<string, string> = {
+  home: 'M3 11.5 12 4l9 7.5M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9',
+  wallet: 'M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2M3 7v11a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H8a2 2 0 1 0 0 4h13',
+  trendingUp: 'M3 17l6-6 4 4 8-8M15 7h6v6',
+  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+  coin: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v10M9.5 9.5c0-1.1 1-2 2.5-2s2.5.7 2.5 1.8-1 1.7-2.5 1.9c-1.6.2-2.5.9-2.5 2s1 1.8 2.5 1.8 2.5-.8 2.5-1.8',
+  briefcase: 'M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8ZM8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1M3 12h18',
+  calendar: 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z',
+  notes: 'M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM14 3v5h5M8 12h8M8 16h5',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z',
+  chart: 'M4 20V10M11 20V4M18 20v-7M3 20h18',
+  plus: 'M12 5v14M5 12h14',
+  edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  trash: 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 6h12Z',
+  close: 'M18 6 6 18M6 6l12 12',
+  check: 'M20 6 9 17l-5-5',
+  pin: 'M12 2a5 5 0 0 0-5 5c0 3 2 5.5 2 8h6c0-2.5 2-5 2-8a5 5 0 0 0-5-5ZM12 15v7',
+  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3',
+  bell: 'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9ZM13.7 21a2 2 0 0 1-3.4 0',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 3',
+  chevronLeft: 'm15 18-6-6 6-6',
+  chevronRight: 'm9 18 6-6-6-6',
+  arrowUp: 'M12 19V5M5 12l7-7 7 7',
+  arrowDown: 'M12 5v14M5 12l7 7 7-7',
+  filter: 'M4 5h16l-6 8v6l-4 2v-8L4 5Z',
+  logo: 'M4 17V7l8 6 8-6v10',
+  sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z',
+  moon: 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+};
+function Icon({ name, size = 18, strokeWidth = 1.8, className = '', style }: { name: string; size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }) {
+  const d = ICON_PATHS[name] || ICON_PATHS.home;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
+      <path d={d} />
+    </svg>
+  );
+}
+
+// Standard Google "G" mark (per Google's sign-in branding guidelines) — the
+// only multi-color glyph in the app, used exclusively for "Continue with Google".
+function GoogleGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.4-.4-3.5Z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.6 15.6 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.7 0-14.4 4.4-17.7 10.7Z" />
+      <path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.5l-6.5-5.5C29.4 34.9 26.8 36 24 36c-5.3 0-9.7-3.1-11.3-7.5l-6.6 5.1C9.5 39.6 16.2 44 24 44Z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.5 5.5C39.9 37.5 44 32.5 44 24c0-1.2-.1-2.4-.4-3.5Z" />
+    </svg>
+  );
+}
+
+// ---------------------- generic UI ----------------------
+function Card({ children, className = '', accent }: { children: React.ReactNode; className?: string; accent?: string }) {
+  return (
+    <div className={`glass rounded-2xl p-5 card-hover ${className}`} style={accent ? { borderTopColor: accent, borderTopWidth: 2 } : {}}>
+      {children}
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon, accent, sub }: { label: string; value: string; icon: string; accent: string; sub?: string }) {
+  return (
+    <div className="glass rounded-2xl p-5 card-hover relative overflow-hidden">
+      <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 blur-2xl" style={{ background: accent }}></div>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs uppercase tracking-wider text-white/50 font-medium">{label}</span>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accent + '22', color: accent }}>
+          <Icon name={icon} size={16} />
+        </div>
+      </div>
+      <div className="text-2xl font-display font-bold tabular-nums">{value}</div>
+      {sub ? <div className="text-xs text-white/40 mt-1">{sub}</div> : null}
+    </div>
+  );
+}
+
+function Button({ children, onClick, variant = 'primary', className = '', type = 'button', accent }: any) {
+  const base = 'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 focus-ring active:scale-[0.97]';
+  const styles: Record<string, string> = {
+    primary: 'text-black shadow-lg shadow-emerald-500/10 hover:brightness-110',
+    ghost: 'bg-white/5 hover:bg-white/10 text-white/80 border border-white/10',
+    danger: 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20',
+  };
+  const bg = accent || 'linear-gradient(135deg,#34D399,#22C55E)';
+  return (
+    <button type={type} onClick={onClick} className={`${base} ${styles[variant]} ${className}`}
+      style={variant === 'primary' ? { backgroundImage: bg } : {}}>
+      {children}
+    </button>
+  );
+}
+
+function IconButton({ icon, onClick, title, danger = false }: { icon: string; onClick?: (e: any) => void; title?: string; danger?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} title={title}
+      className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors focus-ring ${danger ? 'border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : 'border-white/10 text-white/60 hover:bg-white/10 hover:text-white'}`}>
+      <Icon name={icon} size={14} />
+    </button>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-medium text-white/50 mb-1.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+const inputCls = 'w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-white/30 focus:bg-white/[0.07] transition-colors';
+
+function Modal({ open, onClose, title, children, wide = false }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"
+      style={{
+        paddingTop: 'calc(var(--safe-top) + 1rem)',
+        paddingBottom: 'calc(var(--safe-bottom) + 1rem)',
+        paddingLeft: 'calc(var(--safe-left) + 1rem)',
+        paddingRight: 'calc(var(--safe-right) + 1rem)',
+      }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+      <div className={`relative glass-strong rounded-2xl p-6 w-full modal-pop max-h-[88vh] overflow-y-auto scrollbar-thin ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-display font-bold">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/60 focus-ring">
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 text-white/30">
+        <Icon name={icon} size={24} />
+      </div>
+      <div className="font-display font-semibold text-white/70">{title}</div>
+      <div className="text-sm text-white/40 mt-1 max-w-xs">{sub}</div>
+    </div>
+  );
+}
+
+function Pill({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: color + '1F', color }}>
+      {children}
+    </span>
+  );
+}
+
+function ChartCanvas({ config, height = 260 }: { config: any; height?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<any>(null);
+  const sig = useMemo(() => JSON.stringify(config, (k, v) => typeof v === 'function' ? undefined : v), [config]);
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    if (chartRef.current) chartRef.current.destroy();
+    // @ts-ignore
+    chartRef.current = new window.Chart(canvasRef.current.getContext('2d'), config);
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [sig]);
+  return <div style={{ height }}><canvas ref={canvasRef}></canvas></div>;
+}
+
+let CURRENT_THEME: 'dark' | 'light' = 'dark';
+function baseChartOptions(extra: any = {}) {
+  const isLight = CURRENT_THEME === 'light';
+  const grid = isLight ? 'rgba(15,23,32,0.08)' : 'rgba(255,255,255,0.05)';
+  const tick = isLight ? 'rgba(15,23,32,0.6)' : 'rgba(255,255,255,0.4)';
+  const legend = isLight ? 'rgba(15,23,32,0.7)' : 'rgba(255,255,255,0.6)';
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: legend, font: { family: 'Inter', size: 11 }, usePointStyle: true, boxWidth: 8 } },
+      tooltip: {
+        backgroundColor: isLight ? '#FFFFFF' : '#1A1C22',
+        borderColor: isLight ? 'rgba(15,23,32,0.12)' : 'rgba(255,255,255,0.1)',
+        borderWidth: 1, padding: 10,
+        titleColor: isLight ? '#14161B' : '#F5F5F7',
+        bodyColor: isLight ? '#14161B' : '#F5F5F7',
+        titleFont: { family: 'Manrope' }, bodyFont: { family: 'Inter' },
+      },
+    },
+    scales: {
+      x: { grid: { color: grid }, ticks: { color: tick, font: { size: 10 } } },
+      y: { grid: { color: grid }, ticks: { color: tick, font: { size: 10 } } },
+    },
+    ...extra,
+  };
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      className="w-9 h-9 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-colors focus-ring">
+      <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
+    </button>
+  );
+}
+
+function ConfirmBar({ onConfirm, onCancel, label }: { onConfirm: () => void; onCancel: () => void; label: string }) {
+  return (
+    <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+      <span className="text-xs text-rose-300 flex-1">{label}</span>
+      <button onClick={onConfirm} className="text-xs font-semibold text-rose-300 hover:text-rose-200 px-2 py-1">Delete</button>
+      <button onClick={onCancel} className="text-xs text-white/50 hover:text-white/80 px-2 py-1">Cancel</button>
+    </div>
+  );
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function DashboardView({ data }: { data: any }) {
+  const { expenses, incomes, forexTrades, cryptoHoldings, business, goals, meetings } = data;
+
+  const totalIncome = useMemo(() => incomes.reduce((s: number, i: Income) => s + i.amount, 0), [incomes]);
+  const totalExpense = useMemo(() => expenses.reduce((s: number, e: Expense) => s + e.amount, 0), [expenses]);
+  const netSavings = totalIncome - totalExpense;
+
+  const forexPnl = useMemo(() => forexTrades.filter((t: ForexTrade) => t.status === 'Closed' && t.exitPrice != null)
+    .reduce((s: number, t: ForexTrade) => s + tradePnl(t), 0), [forexTrades]);
+
+  const cryptoPnl = useMemo(() => cryptoHoldings.reduce((s: number, h: CryptoHolding) => s + (h.currentPrice - h.avgBuyPrice) * h.quantity, 0), [cryptoHoldings]);
+  const cryptoValue = useMemo(() => cryptoHoldings.reduce((s: number, h: CryptoHolding) => s + h.currentPrice * h.quantity, 0), [cryptoHoldings]);
+
+  const businessProfit = useMemo(() => business.reduce((s: number, b: BusinessEntry) => s + (b.revenue - b.expense), 0), [business]);
+
+  const netPosition = netSavings + forexPnl + cryptoPnl + businessProfit;
+
+  const months = lastNMonthKeys(6);
+  const incomeByMonth = months.map(m => incomes.filter((i: Income) => monthKey(i.date) === m).reduce((s: number, i: Income) => s + i.amount, 0));
+  const expenseByMonth = months.map(m => expenses.filter((e: Expense) => monthKey(e.date) === m).reduce((s: number, e: Expense) => s + e.amount, 0));
+
+  const categoryTotals: Record<string, number> = {};
+  expenses.forEach((e: Expense) => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
+  const catLabels = Object.keys(categoryTotals);
+  const catValues = catLabels.map(l => categoryTotals[l]);
+
+  const recent = useMemo(() => {
+    const items = [
+      ...incomes.map((i: Income) => ({ ...i, kind: 'Income' })),
+      ...expenses.map((e: Expense) => ({ ...e, kind: 'Expense' })),
+    ].sort((a, b) => (b.date > a.date ? 1 : -1)).slice(0, 6);
+    return items;
+  }, [incomes, expenses]);
+
+  const upcomingMeetings = useMemo(() => meetings.filter((m: Meeting) => !m.completed && m.date >= todayISO())
+    .sort((a: Meeting, b: Meeting) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 4), [meetings]);
+
+  const barConfig = {
+    type: 'bar',
+    data: {
+      labels: months.map(monthLabel),
+      datasets: [
+        { label: 'Income', data: incomeByMonth, backgroundColor: '#34D399', borderRadius: 6, maxBarThickness: 22 },
+        { label: 'Expense', data: expenseByMonth, backgroundColor: '#FB7185', borderRadius: 6, maxBarThickness: 22 },
+      ],
+    },
+    options: baseChartOptions(),
+  };
+
+  const doughnutConfig = {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: CHART_PALETTE, borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '68%', scales: undefined },
+  };
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard label="Net Position" value={formatINR(netPosition)} icon="target" accent="#34D399" sub="Income − expenses + trading + crypto + business" />
+        <StatCard label="Total Income" value={formatINR(totalIncome)} icon="trendingUp" accent="#34D399" sub={`${incomes.length} entries`} />
+        <StatCard label="Total Expenses" value={formatINR(totalExpense)} icon="wallet" accent="#FB7185" sub={`${expenses.length} entries`} />
+        <StatCard label="Business Profit" value={formatINR(businessProfit)} icon="briefcase" accent="#D4AF37" sub={`${business.length} entries`} />
+        <StatCard label="Forex P&L" value={formatINR(forexPnl)} icon="activity" accent="#818CF8" sub={`${forexTrades.length} trades`} />
+        <StatCard label="Crypto P&L" value={formatINR(cryptoPnl)} icon="coin" accent="#F59E0B" sub={`Value ${formatINR(cryptoValue)}`} />
+        <StatCard label="Active Goals" value={String(goals.filter((g: Goal) => g.currentAmount < g.targetAmount).length)} icon="target" accent="#F472B6" sub={`${goals.length} total`} />
+        <StatCard label="Upcoming Meetings" value={String(upcomingMeetings.length)} icon="calendar" accent="#38BDF8" sub="Next 4 shown below" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold">Income vs Expenses</h3>
+            <span className="text-xs text-white/40">Last 6 months</span>
+          </div>
+          <ChartCanvas config={barConfig} />
+        </Card>
+        <Card>
+          <h3 className="font-display font-semibold mb-4">Expense Categories</h3>
+          {catLabels.length ? <ChartCanvas config={doughnutConfig} height={220} /> : <EmptyState icon="wallet" title="No expenses yet" sub="Add expenses to see category breakdown" />}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <h3 className="font-display font-semibold mb-4">Recent Transactions</h3>
+          {recent.length === 0 ? <EmptyState icon="wallet" title="No transactions yet" sub="Add income or expenses to get started" /> : (
+            <div className="space-y-1">
+              {recent.map((r: any) => (
+                <div key={r.kind + r.id} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: (r.kind === 'Income' ? '#34D399' : '#FB7185') + '22', color: r.kind === 'Income' ? '#34D399' : '#FB7185' }}>
+                      <Icon name={r.kind === 'Income' ? 'arrowUp' : 'arrowDown'} size={14} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">{r.description || r.category}</div>
+                      <div className="text-xs text-white/40">{r.category} · {formatDate(r.date)}</div>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-semibold tabular-nums ${r.kind === 'Income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {r.kind === 'Income' ? '+' : '-'}{formatINR(r.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card>
+          <h3 className="font-display font-semibold mb-4">Upcoming</h3>
+          {upcomingMeetings.length === 0 ? <EmptyState icon="calendar" title="Nothing scheduled" sub="Add meetings in the Scheduler" /> : (
+            <div className="space-y-3">
+              {upcomingMeetings.map((m: Meeting) => (
+                <div key={m.id} className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-sky-400/10 text-sky-400 flex flex-col items-center justify-center text-[10px] font-bold leading-none shrink-0">
+                    <span>{new Date(m.date + 'T00:00:00').getDate()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{m.title}</div>
+                    <div className="text-xs text-white/40">{formatDate(m.date)} · {m.time}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function tradePnl(t: ForexTrade): number {
+  if (t.exitPrice == null) return 0;
+  const dir = t.direction === 'Buy' ? 1 : -1;
+  return (t.exitPrice - t.entryPrice) * t.lotSize * dir;
+}
+
+// ============================================================
+// DATE RANGE FILTER — Today / This Week / This Month / This Year /
+// Total <X> (All Time) / Custom Range. Shared by Expenses, Income,
+// and Business Profit (NOT used by Forex Journal or Crypto Portfolio).
+// ============================================================
+function DateRangeFilter({ filter, setFilter, accent, allTimeLabel = 'Total Expenses' }: { filter: DateFilterState; setFilter: (f: DateFilterState) => void; accent: string; allTimeLabel?: string }) {
+  const [open, setOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const startParts0 = partsFromISO(filter.start);
+  const endParts0 = partsFromISO(filter.end);
+  const [startDay, setStartDay] = useState(startParts0.day);
+  const [startMonth, setStartMonth] = useState(startParts0.month);
+  const [startYear, setStartYear] = useState(startParts0.year);
+  const [endDay, setEndDay] = useState(endParts0.day);
+  const [endMonth, setEndMonth] = useState(endParts0.month);
+  const [endYear, setEndYear] = useState(endParts0.year);
+
+  const OPTIONS: { mode: DateFilterMode; label: string }[] = [
+    { mode: 'today', label: 'Today' },
+    { mode: 'week', label: 'This Week' },
+    { mode: 'month', label: 'This Month' },
+    { mode: 'year', label: 'This Year' },
+    { mode: 'all', label: `${allTimeLabel} (All Time)` },
+  ];
+
+  function choose(mode: DateFilterMode) {
+    if (mode === 'custom') return;
+    setFilter({ mode, start: '', end: '' });
+    setOpen(false);
+  }
+  function openCustom() {
+    const s = partsFromISO(filter.start || todayISO());
+    const e = partsFromISO(filter.end || todayISO());
+    setStartDay(s.day); setStartMonth(s.month); setStartYear(s.year);
+    setEndDay(e.day); setEndMonth(e.month); setEndYear(e.year);
+    setOpen(false);
+    setCustomOpen(true);
+  }
+  function applyCustom() {
+    const start = partsToISO(startDay, startMonth, startYear);
+    const end = partsToISO(endDay, endMonth, endYear);
+    const [s, e] = start <= end ? [start, end] : [end, start];
+    setFilter({ mode: 'custom', start: s, end: e });
+    setCustomOpen(false);
+  }
+  function resetCustom() {
+    const t = partsFromISO(todayISO());
+    setStartDay(t.day); setStartMonth(t.month); setStartYear(t.year);
+    setEndDay(t.day); setEndMonth(t.month); setEndYear(t.year);
+  }
+
+  const selectCls = 'bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white focus:bg-white/[0.07] transition-colors w-full';
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition-colors focus-ring">
+        <Icon name="calendar" size={14} className="text-white/40" />
+        {dateFilterLabel(filter, allTimeLabel)}
+        <Icon name="chevronRight" size={12} className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}></div>
+          <div className="absolute left-0 right-auto sm:left-auto sm:right-0 mt-2 w-[min(16rem,calc(100vw-2rem))] sm:w-64 glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-left sm:origin-top-right shadow-2xl">
+            {OPTIONS.map(o => (
+              <button key={o.mode} onClick={() => choose(o.mode)}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === o.mode ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+                {o.label}
+                {filter.mode === o.mode ? <Icon name="check" size={14} style={{ color: accent }} /> : null}
+              </button>
+            ))}
+            <div className="h-px bg-white/10 my-1.5"></div>
+            <button onClick={openCustom}
+              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === 'custom' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+              Custom Range
+              <Icon name="chevronRight" size={12} className="text-white/30" />
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Custom Range">
+        <div className="space-y-4">
+          <div>
+            <span className="block text-xs font-medium text-white/50 mb-1.5">Start Date</span>
+            <div className="grid grid-cols-3 gap-2">
+              <select className={selectCls} value={startDay} onChange={e => setStartDay(Number(e.target.value))}>
+                {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select className={selectCls} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+                {MONTH_OPTIONS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select className={selectCls} value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-white/50 mb-1.5">End Date</span>
+            <div className="grid grid-cols-3 gap-2">
+              <select className={selectCls} value={endDay} onChange={e => setEndDay(Number(e.target.value))}>
+                {DAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select className={selectCls} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+                {MONTH_OPTIONS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select className={selectCls} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" onClick={applyCustom} accent={`linear-gradient(135deg,${accent},${accent})`} className="flex-1 justify-center">Apply</Button>
+            <Button type="button" variant="ghost" onClick={resetCustom} className="flex-1 justify-center">Reset</Button>
+            <Button type="button" variant="ghost" onClick={() => setCustomOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// GENERIC TRANSACTION VIEW (Expenses / Income)
+// ============================================================
+function TransactionView({ title, accent, icon, items, setItems, categories, kind, filterStorageKey, allTimeLabel }: {
+  title: string; accent: string; icon: string; items: (Expense | Income)[]; setItems: any; categories: string[]; kind: 'Expense' | 'Income'; filterStorageKey: string; allTimeLabel: string;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>(filterStorageKey, { mode: 'all', start: '', end: '' });
+  const [form, setForm] = useState({ amount: '', category: categories[0], description: '', date: todayISO() });
+
+  const filtered = useMemo(() => {
+    const { start, end } = resolveDateRange(dateFilter);
+    if (!start && !end) return items;
+    return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
+  }, [items, dateFilter]);
+  const sorted = useMemo(() => [...filtered].sort((a, b) => (b.date > a.date ? 1 : -1)), [filtered]);
+  const total = useMemo(() => filtered.reduce((s, i) => s + i.amount, 0), [filtered]);
+
+  const categoryTotals: Record<string, number> = {};
+  filtered.forEach(i => { categoryTotals[i.category] = (categoryTotals[i.category] || 0) + i.amount; });
+
+  function openAdd() {
+    setEditing(null);
+    setForm({ amount: '', category: categories[0], description: '', date: todayISO() });
+    setModalOpen(true);
+  }
+  function openEdit(item: any) {
+    setEditing(item);
+    setForm({ amount: String(item.amount), category: item.category, description: item.description, date: item.date });
+    setModalOpen(true);
+  }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(form.amount);
+    if (!amount || amount <= 0) return;
+    if (editing) {
+      setItems((prev: any[]) => prev.map(i => i.id === editing.id ? { ...i, ...form, amount } : i));
+    } else {
+      setItems((prev: any[]) => [...prev, { id: uid(), ...form, amount }]);
+    }
+    setModalOpen(false);
+  }
+  function remove(id: ID) {
+    setItems((prev: any[]) => prev.filter(i => i.id !== id));
+    setConfirmId(null);
+  }
+
+  const doughnutConfig = {
+    type: 'doughnut',
+    data: { labels: Object.keys(categoryTotals), datasets: [{ data: Object.values(categoryTotals), backgroundColor: CHART_PALETTE, borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '68%' },
+  };
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: accent + '22', color: accent }}>
+            <Icon name={icon} size={20} />
+          </div>
+          <div>
+            <h2 className="text-xl font-display font-bold">{title}</h2>
+            <p className="text-sm text-white/40">{filtered.length} entries · {formatINR(total)} total</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent={accent} allTimeLabel={allTimeLabel} />
+          <Button onClick={openAdd} accent={`linear-gradient(135deg,${accent},${accent})`}><Icon name="plus" size={16} />Add {kind}</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2 !p-0 overflow-hidden">
+          {sorted.length === 0 ? <div className="p-6"><EmptyState icon={icon} title={`No ${kind.toLowerCase()}s yet`} sub={`Add your first ${kind.toLowerCase()} to start tracking`} /></div> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-white/40 border-b border-white/10">
+                    <th className="px-5 py-3 font-medium">Description</th>
+                    <th className="px-5 py-3 font-medium">Category</th>
+                    <th className="px-5 py-3 font-medium">Date</th>
+                    <th className="px-5 py-3 font-medium text-right">Amount</th>
+                    <th className="px-5 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(item => (
+                    <tr key={item.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-medium">{item.description || '—'}</td>
+                      <td className="px-5 py-3"><Pill color={accent}>{item.category}</Pill></td>
+                      <td className="px-5 py-3 text-white/50">{formatDate(item.date)}</td>
+                      <td className="px-5 py-3 text-right font-semibold tabular-nums" style={{ color: accent }}>{formatINR(item.amount)}</td>
+                      <td className="px-5 py-3">
+                        {confirmId === item.id ? (
+                          <ConfirmBar label="Delete this entry?" onConfirm={() => remove(item.id)} onCancel={() => setConfirmId(null)} />
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <IconButton icon="edit" onClick={() => openEdit(item)} title="Edit" />
+                            <IconButton icon="trash" danger onClick={() => setConfirmId(item.id)} title="Delete" />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+        <Card>
+          <h3 className="font-display font-semibold mb-4">By Category</h3>
+          {Object.keys(categoryTotals).length ? <ChartCanvas config={doughnutConfig} height={220} /> : <EmptyState icon={icon} title="No data" sub="Category chart appears once you add entries" />}
+        </Card>
+      </div>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${kind}` : `Add ${kind}`}>
+        <form onSubmit={save} className="space-y-4">
+          <Field label="Amount (₹)"><input required type="number" min="0" step="0.01" className={inputCls} value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="0.00" /></Field>
+          <Field label="Category">
+            <select className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Description"><input className={inputCls} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional note" /></Field>
+          <Field label="Date"><input required type="date" className={inputCls} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" accent={`linear-gradient(135deg,${accent},${accent})`} className="flex-1 justify-center">{editing ? 'Save Changes' : `Add ${kind}`}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// FOREX JOURNAL
+// ============================================================
+function ForexView({ trades, setTrades }: { trades: ForexTrade[]; setTrades: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ForexTrade | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const empty = { pair: '', direction: 'Buy' as 'Buy' | 'Sell', entryPrice: '', exitPrice: '', lotSize: '1', status: 'Open' as 'Open' | 'Closed', date: todayISO(), notes: '' };
+  const [form, setForm] = useState<any>(empty);
+
+  const closed = trades.filter(t => t.status === 'Closed' && t.exitPrice != null);
+  const wins = closed.filter(t => tradePnl(t) > 0);
+  const totalPnl = closed.reduce((s, t) => s + tradePnl(t), 0);
+  const winRate = closed.length ? (wins.length / closed.length) * 100 : 0;
+  const avgWin = wins.length ? wins.reduce((s, t) => s + tradePnl(t), 0) / wins.length : 0;
+  const losses = closed.filter(t => tradePnl(t) <= 0);
+  const avgLoss = losses.length ? losses.reduce((s, t) => s + tradePnl(t), 0) / losses.length : 0;
+
+  const sorted = [...trades].sort((a, b) => (b.date > a.date ? 1 : -1));
+  let cum = 0;
+  const cumSeries = [...closed].sort((a, b) => (a.date > b.date ? 1 : -1)).map(t => { cum += tradePnl(t); return cum; });
+  const cumLabels = [...closed].sort((a, b) => (a.date > b.date ? 1 : -1)).map(t => formatDate(t.date));
+
+  function openAdd() { setEditing(null); setForm(empty); setModalOpen(true); }
+  function openEdit(t: ForexTrade) {
+    setEditing(t);
+    setForm({ pair: t.pair, direction: t.direction, entryPrice: String(t.entryPrice), exitPrice: t.exitPrice != null ? String(t.exitPrice) : '', lotSize: String(t.lotSize), status: t.status, date: t.date, notes: t.notes });
+    setModalOpen(true);
+  }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    const entryPrice = parseFloat(form.entryPrice);
+    const lotSize = parseFloat(form.lotSize) || 1;
+    const exitPrice = form.exitPrice !== '' ? parseFloat(form.exitPrice) : null;
+    if (!form.pair || !entryPrice) return;
+    const payload = { pair: form.pair.toUpperCase(), direction: form.direction, entryPrice, exitPrice, lotSize, status: form.status, date: form.date, notes: form.notes };
+    if (editing) setTrades((prev: ForexTrade[]) => prev.map(t => t.id === editing.id ? { ...t, ...payload } : t));
+    else setTrades((prev: ForexTrade[]) => [...prev, { id: uid(), ...payload }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setTrades((prev: ForexTrade[]) => prev.filter(t => t.id !== id)); setConfirmId(null); }
+
+  const winRateConfig = {
+    type: 'doughnut',
+    data: { labels: ['Wins', 'Losses'], datasets: [{ data: [wins.length, losses.length], backgroundColor: ['#34D399', '#FB7185'], borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '70%' },
+  };
+  const cumConfig = {
+    type: 'line',
+    data: { labels: cumLabels, datasets: [{ label: 'Cumulative P&L', data: cumSeries, borderColor: '#818CF8', backgroundColor: 'rgba(129,140,248,0.15)', fill: true, tension: 0.35, pointRadius: 2 }] },
+    options: baseChartOptions(),
+  };
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-indigo-400/15 text-indigo-400"><Icon name="activity" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Forex Trading Journal</h2><p className="text-sm text-white/40">{trades.length} trades logged</p></div>
+        </div>
+        <Button onClick={openAdd} accent="linear-gradient(135deg,#818CF8,#6366F1)"><Icon name="plus" size={16} />Log Trade</Button>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total P&L" value={formatINR(totalPnl)} icon="activity" accent="#818CF8" />
+        <StatCard label="Win Rate" value={`${formatNum(winRate, 1)}%`} icon="target" accent="#34D399" sub={`${wins.length}/${closed.length} closed`} />
+        <StatCard label="Avg Win" value={formatINR(avgWin)} icon="arrowUp" accent="#34D399" />
+        <StatCard label="Avg Loss" value={formatINR(avgLoss)} icon="arrowDown" accent="#FB7185" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <h3 className="font-display font-semibold mb-4">Cumulative P&L</h3>
+          {closed.length ? <ChartCanvas config={cumConfig} /> : <EmptyState icon="activity" title="No closed trades" sub="Close a trade to see your P&L curve" />}
+        </Card>
+        <Card>
+          <h3 className="font-display font-semibold mb-4">Win / Loss</h3>
+          {closed.length ? <ChartCanvas config={winRateConfig} height={220} /> : <EmptyState icon="target" title="No data yet" sub="Win rate appears after closed trades" />}
+        </Card>
+      </div>
+
+      <Card className="!p-0 overflow-hidden">
+        {sorted.length === 0 ? <div className="p-6"><EmptyState icon="activity" title="No trades yet" sub="Log your first forex trade to begin your journal" /></div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-white/40 border-b border-white/10">
+                  <th className="px-5 py-3 font-medium">Pair</th>
+                  <th className="px-5 py-3 font-medium">Direction</th>
+                  <th className="px-5 py-3 font-medium">Entry</th>
+                  <th className="px-5 py-3 font-medium">Exit</th>
+                  <th className="px-5 py-3 font-medium">Lot</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Date</th>
+                  <th className="px-5 py-3 font-medium text-right">P&L</th>
+                  <th className="px-5 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(t => {
+                  const pnl = tradePnl(t);
+                  return (
+                    <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-semibold">{t.pair}</td>
+                      <td className="px-5 py-3"><Pill color={t.direction === 'Buy' ? '#34D399' : '#FB7185'}>{t.direction}</Pill></td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatNum(t.entryPrice, 4)}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{t.exitPrice != null ? formatNum(t.exitPrice, 4) : '—'}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{t.lotSize}</td>
+                      <td className="px-5 py-3"><Pill color={t.status === 'Open' ? '#F59E0B' : '#38BDF8'}>{t.status}</Pill></td>
+                      <td className="px-5 py-3 text-white/50">{formatDate(t.date)}</td>
+                      <td className={`px-5 py-3 text-right font-semibold tabular-nums ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-rose-400' : 'text-white/50'}`}>{t.status === 'Closed' ? formatINR(pnl) : '—'}</td>
+                      <td className="px-5 py-3">
+                        {confirmId === t.id ? (
+                          <ConfirmBar label="Delete trade?" onConfirm={() => remove(t.id)} onCancel={() => setConfirmId(null)} />
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <IconButton icon="edit" onClick={() => openEdit(t)} title="Edit" />
+                            <IconButton icon="trash" danger onClick={() => setConfirmId(t.id)} title="Delete" />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Trade' : 'Log Trade'} wide>
+        <form onSubmit={save} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Currency Pair"><input required className={inputCls} value={form.pair} onChange={e => setForm({ ...form, pair: e.target.value })} placeholder="EUR/USD" /></Field>
+          <Field label="Direction">
+            <select className={inputCls} value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}>
+              <option>Buy</option><option>Sell</option>
+            </select>
+          </Field>
+          <Field label="Entry Price"><input required type="number" step="0.0001" className={inputCls} value={form.entryPrice} onChange={e => setForm({ ...form, entryPrice: e.target.value })} /></Field>
+          <Field label="Exit Price (leave blank if open)"><input type="number" step="0.0001" className={inputCls} value={form.exitPrice} onChange={e => setForm({ ...form, exitPrice: e.target.value })} /></Field>
+          <Field label="Lot Size"><input required type="number" step="0.01" className={inputCls} value={form.lotSize} onChange={e => setForm({ ...form, lotSize: e.target.value })} /></Field>
+          <Field label="Status">
+            <select className={inputCls} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+              <option>Open</option><option>Closed</option>
+            </select>
+          </Field>
+          <Field label="Date"><input required type="date" className={inputCls} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="sm:col-span-2"><Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Setup, reasoning, lessons learned..." /></Field></div>
+          <div className="sm:col-span-2 flex gap-3 pt-2">
+            <Button type="submit" accent="linear-gradient(135deg,#818CF8,#6366F1)" className="flex-1 justify-center">{editing ? 'Save Changes' : 'Log Trade'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// CRYPTO PORTFOLIO
+// ============================================================
+function CryptoView({ holdings, setHoldings }: { holdings: CryptoHolding[]; setHoldings: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<CryptoHolding | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const empty = { coin: '', symbol: '', quantity: '', avgBuyPrice: '', currentPrice: '', date: todayISO() };
+  const [form, setForm] = useState<any>(empty);
+
+  const totalInvestment = holdings.reduce((s, h) => s + h.avgBuyPrice * h.quantity, 0);
+  const totalValue = holdings.reduce((s, h) => s + h.currentPrice * h.quantity, 0);
+  const totalPnl = totalValue - totalInvestment;
+  const pnlPct = totalInvestment ? (totalPnl / totalInvestment) * 100 : 0;
+
+  function openAdd() { setEditing(null); setForm(empty); setModalOpen(true); }
+  function openEdit(h: CryptoHolding) {
+    setEditing(h);
+    setForm({ coin: h.coin, symbol: h.symbol, quantity: String(h.quantity), avgBuyPrice: String(h.avgBuyPrice), currentPrice: String(h.currentPrice), date: h.date });
+    setModalOpen(true);
+  }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    const quantity = parseFloat(form.quantity), avgBuyPrice = parseFloat(form.avgBuyPrice), currentPrice = parseFloat(form.currentPrice);
+    if (!form.coin || !quantity || !avgBuyPrice) return;
+    const payload = { coin: form.coin, symbol: form.symbol.toUpperCase(), quantity, avgBuyPrice, currentPrice: currentPrice || avgBuyPrice, date: form.date };
+    if (editing) setHoldings((prev: CryptoHolding[]) => prev.map(h => h.id === editing.id ? { ...h, ...payload } : h));
+    else setHoldings((prev: CryptoHolding[]) => [...prev, { id: uid(), ...payload }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setHoldings((prev: CryptoHolding[]) => prev.filter(h => h.id !== id)); setConfirmId(null); }
+
+  const allocConfig = {
+    type: 'doughnut',
+    data: { labels: holdings.map(h => h.symbol || h.coin), datasets: [{ data: holdings.map(h => h.currentPrice * h.quantity), backgroundColor: CHART_PALETTE, borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '68%' },
+  };
+  const pnlConfig = {
+    type: 'bar',
+    data: { labels: holdings.map(h => h.symbol || h.coin), datasets: [{ label: 'P&L', data: holdings.map(h => (h.currentPrice - h.avgBuyPrice) * h.quantity), backgroundColor: holdings.map(h => (h.currentPrice - h.avgBuyPrice) >= 0 ? '#34D399' : '#FB7185'), borderRadius: 6, maxBarThickness: 28 }] },
+    options: baseChartOptions(),
+  };
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-amber-400/15 text-amber-400"><Icon name="coin" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Crypto Portfolio</h2><p className="text-sm text-white/40">{holdings.length} holdings</p></div>
+        </div>
+        <Button onClick={openAdd} accent="linear-gradient(135deg,#F59E0B,#D97706)"><Icon name="plus" size={16} />Add Holding</Button>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Investment" value={formatINR(totalInvestment)} icon="coin" accent="#F59E0B" />
+        <StatCard label="Current Value" value={formatINR(totalValue)} icon="trendingUp" accent="#34D399" />
+        <StatCard label="Total P&L" value={formatINR(totalPnl)} icon="activity" accent={totalPnl >= 0 ? '#34D399' : '#FB7185'} />
+        <StatCard label="Return" value={`${pnlPct >= 0 ? '+' : ''}${formatNum(pnlPct, 1)}%`} icon="target" accent={pnlPct >= 0 ? '#34D399' : '#FB7185'} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <h3 className="font-display font-semibold mb-4">P&L by Coin</h3>
+          {holdings.length ? <ChartCanvas config={pnlConfig} /> : <EmptyState icon="coin" title="No holdings yet" sub="Add a coin to see performance" />}
+        </Card>
+        <Card>
+          <h3 className="font-display font-semibold mb-4">Allocation</h3>
+          {holdings.length ? <ChartCanvas config={allocConfig} height={220} /> : <EmptyState icon="coin" title="No allocation data" sub="Add holdings to see the split" />}
+        </Card>
+      </div>
+
+      <Card className="!p-0 overflow-hidden">
+        {holdings.length === 0 ? <div className="p-6"><EmptyState icon="coin" title="No holdings yet" sub="Track your crypto investments here" /></div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-white/40 border-b border-white/10">
+                  <th className="px-5 py-3 font-medium">Coin</th>
+                  <th className="px-5 py-3 font-medium">Qty</th>
+                  <th className="px-5 py-3 font-medium">Avg Buy</th>
+                  <th className="px-5 py-3 font-medium">Current</th>
+                  <th className="px-5 py-3 font-medium">Investment</th>
+                  <th className="px-5 py-3 font-medium">Value</th>
+                  <th className="px-5 py-3 font-medium text-right">P&L</th>
+                  <th className="px-5 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holdings.map(h => {
+                  const inv = h.avgBuyPrice * h.quantity, val = h.currentPrice * h.quantity, pnl = val - inv;
+                  return (
+                    <tr key={h.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-semibold">{h.coin} <span className="text-white/40 font-normal">{h.symbol}</span></td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatNum(h.quantity, 4)}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatINR(h.avgBuyPrice)}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatINR(h.currentPrice)}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatINR(inv)}</td>
+                      <td className="px-5 py-3 tabular-nums text-white/70">{formatINR(val)}</td>
+                      <td className={`px-5 py-3 text-right font-semibold tabular-nums ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatINR(pnl)}</td>
+                      <td className="px-5 py-3">
+                        {confirmId === h.id ? (
+                          <ConfirmBar label="Delete holding?" onConfirm={() => remove(h.id)} onCancel={() => setConfirmId(null)} />
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <IconButton icon="edit" onClick={() => openEdit(h)} title="Edit" />
+                            <IconButton icon="trash" danger onClick={() => setConfirmId(h.id)} title="Delete" />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Holding' : 'Add Holding'} wide>
+        <form onSubmit={save} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Coin Name"><input required className={inputCls} value={form.coin} onChange={e => setForm({ ...form, coin: e.target.value })} placeholder="Bitcoin" /></Field>
+          <Field label="Symbol"><input className={inputCls} value={form.symbol} onChange={e => setForm({ ...form, symbol: e.target.value })} placeholder="BTC" /></Field>
+          <Field label="Quantity"><input required type="number" step="0.00000001" className={inputCls} value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></Field>
+          <Field label="Avg Buy Price (₹)"><input required type="number" step="0.01" className={inputCls} value={form.avgBuyPrice} onChange={e => setForm({ ...form, avgBuyPrice: e.target.value })} /></Field>
+          <Field label="Current Price (₹)"><input type="number" step="0.01" className={inputCls} value={form.currentPrice} onChange={e => setForm({ ...form, currentPrice: e.target.value })} placeholder="Defaults to buy price" /></Field>
+          <Field label="Date Acquired"><input required type="date" className={inputCls} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="sm:col-span-2 flex gap-3 pt-2">
+            <Button type="submit" accent="linear-gradient(135deg,#F59E0B,#D97706)" className="flex-1 justify-center">{editing ? 'Save Changes' : 'Add Holding'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// BUSINESS PROFIT TRACKER
+// ============================================================
+function BusinessView({ business, setBusiness }: { business: BusinessEntry[]; setBusiness: any }) {
+  // Page-level filter: which entries the table/stats show. 'all' is the
+  // default landing view now that there's no single "first tab" the way
+  // the old 4-tab design had.
+  const [typeFilter, setTypeFilter] = useState<'all' | BusinessType>('all');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<BusinessEntry | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>('businessDateFilter', { mode: 'all', start: '', end: '' });
+  const empty = { businessType: 'online' as BusinessType, category: '', description: '', revenue: '', expense: '', date: todayISO() };
+  const [form, setForm] = useState<any>(empty);
+
+  const dateFiltered = useMemo(() => {
+    const { start, end } = resolveDateRange(dateFilter);
+    if (!start && !end) return business;
+    return business.filter(b => (!start || b.date >= start) && (!end || b.date <= end));
+  }, [business, dateFilter]);
+
+  const items = useMemo(() => dateFiltered
+    .filter(b => typeFilter === 'all' || resolveBusinessType(b) === typeFilter)
+    .sort((a, b) => (b.date > a.date ? 1 : -1)), [dateFiltered, typeFilter]);
+  const revenue = items.reduce((s, b) => s + b.revenue, 0);
+  const expense = items.reduce((s, b) => s + b.expense, 0);
+  const profit = revenue - expense;
+
+  // Overview chart always reflects both types regardless of the page filter
+  // above — same behavior as before, just 2 bars instead of 4.
+  const overviewByType = BUSINESS_TYPE_OPTIONS.map(bt => dateFiltered.filter(b => resolveBusinessType(b) === bt.key).reduce((s, b) => s + (b.revenue - b.expense), 0));
+
+  function openAdd() {
+    setEditing(null);
+    setForm({ ...empty, businessType: typeFilter === 'offline' ? 'offline' : 'online' });
+    setModalOpen(true);
+  }
+  function openEdit(b: BusinessEntry) {
+    setEditing(b);
+    setForm({
+      businessType: resolveBusinessType(b),
+      category: resolveBusinessCategory(b),
+      description: b.description,
+      revenue: String(b.revenue),
+      expense: String(b.expense),
+      date: b.date,
+    });
+    setModalOpen(true);
+  }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    const revenue = parseFloat(form.revenue) || 0, expense = parseFloat(form.expense) || 0;
+    if (!form.description) return;
+    // Business Type is always one of the two segmented options (never
+    // unset, by construction of the control below) — Category is optional
+    // free text, saved as-is (or omitted if left blank).
+    const payload = {
+      businessType: form.businessType as BusinessType,
+      category: (form.category || '').trim(),
+      description: form.description,
+      revenue, expense, date: form.date,
+    };
+    // Both fields ride along with the rest of the entry through the exact
+    // same useSyncedCollection → Firestore pipeline as everything else —
+    // no sync-layer changes needed, it syncs whatever fields an entry has.
+    if (editing) setBusiness((prev: BusinessEntry[]) => prev.map(b => b.id === editing.id ? { ...b, ...payload } : b));
+    else setBusiness((prev: BusinessEntry[]) => [...prev, { id: uid(), ...payload }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setBusiness((prev: BusinessEntry[]) => prev.filter(b => b.id !== id)); setConfirmId(null); }
+
+  const overviewConfig = {
+    type: 'bar',
+    data: { labels: BUSINESS_TYPE_OPTIONS.map(b => b.label), datasets: [{ label: 'Profit', data: overviewByType, backgroundColor: BUSINESS_TYPE_OPTIONS.map(b => b.color), borderRadius: 8, maxBarThickness: 60 }] },
+    options: baseChartOptions({ plugins: { legend: { display: false } } }),
+  };
+
+  const filterMeta = typeFilter === 'all' ? { label: 'All Entries', color: '#D4AF37' } : BUSINESS_TYPE_OPTIONS.find(b => b.key === typeFilter)!;
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: '#D4AF3722', color: '#D4AF37' }}><Icon name="briefcase" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Business Profit Tracker</h2><p className="text-sm text-white/40">Online &amp; offline businesses, with your own categories</p></div>
+        </div>
+        <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent="#D4AF37" allTimeLabel="Total Business Profit" />
+      </div>
+
+      <Card>
+        <h3 className="font-display font-semibold mb-4">Profit by Business Type</h3>
+        <ChartCanvas config={overviewConfig} height={220} />
+      </Card>
+
+      {/* Page filter — modern segmented control, replaces the old 4 fixed tabs */}
+      <div className="inline-flex flex-wrap gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
+        {([{ key: 'all', label: 'All' }, ...BUSINESS_TYPE_OPTIONS] as { key: 'all' | BusinessType; label: string }[]).map(opt => (
+          <button key={opt.key} onClick={() => setTypeFilter(opt.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all focus-ring ${typeFilter === opt.key ? 'text-black' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+            style={typeFilter === opt.key ? { background: opt.key === 'all' ? '#D4AF37' : BUSINESS_TYPE_OPTIONS.find(b => b.key === opt.key)!.color } : {}}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-3 gap-4 flex-1">
+          <StatCard label="Revenue" value={formatINR(revenue)} icon="trendingUp" accent={filterMeta.color} />
+          <StatCard label="Expenses" value={formatINR(expense)} icon="wallet" accent="#FB7185" />
+          <StatCard label="Profit" value={formatINR(profit)} icon="target" accent={profit >= 0 ? '#34D399' : '#FB7185'} />
+        </div>
+      </div>
+
+      <Card className="!p-0 overflow-hidden">
+        <div className="flex items-center justify-between p-5 pb-0">
+          <h3 className="font-display font-semibold">{filterMeta.label} Entries</h3>
+          <Button onClick={openAdd} accent={`linear-gradient(135deg,${filterMeta.color},${filterMeta.color})`}><Icon name="plus" size={16} />Add Entry</Button>
+        </div>
+        {items.length === 0 ? <div className="p-6"><EmptyState icon="briefcase" title="No entries yet" sub="Log revenue and expenses for your business" /></div> : (
+          <div className="overflow-x-auto mt-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-white/40 border-b border-white/10">
+                  <th className="px-5 py-3 font-medium">Description</th>
+                  <th className="px-5 py-3 font-medium">Type / Category</th>
+                  <th className="px-5 py-3 font-medium">Date</th>
+                  <th className="px-5 py-3 font-medium text-right">Revenue</th>
+                  <th className="px-5 py-3 font-medium text-right">Expense</th>
+                  <th className="px-5 py-3 font-medium text-right">Profit</th>
+                  <th className="px-5 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(b => {
+                  const bType = resolveBusinessType(b);
+                  const bCategory = resolveBusinessCategory(b);
+                  const bMeta = BUSINESS_TYPE_OPTIONS.find(o => o.key === bType)!;
+                  return (
+                    <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-medium">{b.description}</td>
+                      <td className="px-5 py-3">
+                        {bCategory ? (
+                          <>
+                            <div className="font-medium">{bCategory}</div>
+                            <div className="text-xs" style={{ color: bMeta.color }}>{bMeta.label}</div>
+                          </>
+                        ) : (
+                          <Pill color={bMeta.color}>{bMeta.label}</Pill>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-white/50">{formatDate(b.date)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-emerald-400">{formatINR(b.revenue)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-rose-400">{formatINR(b.expense)}</td>
+                      <td className={`px-5 py-3 text-right font-semibold tabular-nums ${b.revenue - b.expense >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatINR(b.revenue - b.expense)}</td>
+                      <td className="px-5 py-3">
+                        {confirmId === b.id ? (
+                          <ConfirmBar label="Delete entry?" onConfirm={() => remove(b.id)} onCancel={() => setConfirmId(null)} />
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <IconButton icon="edit" onClick={() => openEdit(b)} title="Edit" />
+                            <IconButton icon="trash" danger onClick={() => setConfirmId(b.id)} title="Delete" />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Entry' : 'Add Entry'}>
+        <form onSubmit={save} className="space-y-4">
+          <div>
+            <span className="block text-xs font-medium text-white/50 mb-1.5">Business Type</span>
+            <div className="inline-flex w-full p-1 rounded-xl bg-white/5 border border-white/10">
+              {BUSINESS_TYPE_OPTIONS.map(opt => (
+                <button key={opt.key} type="button" onClick={() => setForm({ ...form, businessType: opt.key })}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all focus-ring ${form.businessType === opt.key ? 'text-black' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                  style={form.businessType === opt.key ? { background: opt.color } : {}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Field label="Business Category (Optional)">
+            <input className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
+              placeholder={form.businessType === 'online' ? 'e.g. Trading, Dropshipping, Freelancing, SaaS' : 'e.g. Jewellery Store, Grocery Shop, Electronics'} />
+          </Field>
+          <Field label="Description"><input required className={inputCls} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="e.g. Store sales, client project" /></Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Revenue (₹)"><input type="number" step="0.01" className={inputCls} value={form.revenue} onChange={e => setForm({ ...form, revenue: e.target.value })} /></Field>
+            <Field label="Expense (₹)"><input type="number" step="0.01" className={inputCls} value={form.expense} onChange={e => setForm({ ...form, expense: e.target.value })} /></Field>
+          </div>
+          <Field label="Date"><input required type="date" className={inputCls} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" accent={`linear-gradient(135deg,${BUSINESS_TYPE_OPTIONS.find(o => o.key === form.businessType)!.color},${BUSINESS_TYPE_OPTIONS.find(o => o.key === form.businessType)!.color})`} className="flex-1 justify-center">{editing ? 'Save Changes' : 'Add Entry'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// SCHEDULER
+// ============================================================
+function SchedulerView({ meetings, setMeetings }: { meetings: Meeting[]; setMeetings: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Meeting | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const [cursor, setCursor] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const empty = { title: '', date: todayISO(), time: '10:00', notes: '', reminder: true };
+  const [form, setForm] = useState<any>(empty);
+
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [...Array(startOffset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+
+  const meetingsByDate: Record<string, Meeting[]> = {};
+  meetings.forEach(m => { (meetingsByDate[m.date] ||= []).push(m); });
+
+  const listSource = selectedDate ? (meetingsByDate[selectedDate] || []) : [...meetings].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+  function openAdd() { setEditing(null); setForm({ ...empty, date: selectedDate || todayISO() }); setModalOpen(true); }
+  function openEdit(m: Meeting) { setEditing(m); setForm({ title: m.title, date: m.date, time: m.time, notes: m.notes, reminder: m.reminder }); setModalOpen(true); }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.title || !form.date) return;
+    if (editing) setMeetings((prev: Meeting[]) => prev.map(m => m.id === editing.id ? { ...m, ...form, completed: m.completed } : m));
+    else setMeetings((prev: Meeting[]) => [...prev, { id: uid(), ...form, completed: false }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setMeetings((prev: Meeting[]) => prev.filter(m => m.id !== id)); setConfirmId(null); }
+  function toggleComplete(id: ID) { setMeetings((prev: Meeting[]) => prev.map(m => m.id === id ? { ...m, completed: !m.completed } : m)); }
+
+  const todayStr = todayISO();
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-sky-400/15 text-sky-400"><Icon name="calendar" size={20} /></div>
+        <div><h2 className="text-xl font-display font-bold">Meeting Scheduler</h2><p className="text-sm text-white/40">{meetings.filter(m => !m.completed).length} upcoming</p></div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold">{cursor.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</h3>
+            <div className="flex items-center gap-2">
+              <IconButton icon="chevronLeft" onClick={() => setCursor(new Date(year, month - 1, 1))} />
+              <button onClick={() => { setCursor(new Date()); setSelectedDate(todayStr); }} className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white/60">Today</button>
+              <IconButton icon="chevronRight" onClick={() => setCursor(new Date(year, month + 1, 1))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-1.5 text-center text-xs text-white/40 mb-2">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="py-1 font-medium">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((day, idx) => {
+              if (day === null) return <div key={idx}></div>;
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const has = meetingsByDate[dateStr]?.length;
+              const isToday = dateStr === todayStr;
+              const isSelected = dateStr === selectedDate;
+              return (
+                <button key={idx} onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                  className={`aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-all border ${isSelected ? 'border-sky-400 bg-sky-400/15 text-sky-300' : isToday ? 'border-emerald-400/40 text-emerald-300' : 'border-transparent hover:bg-white/5 text-white/70'}`}>
+                  <span>{day}</span>
+                  {has ? <span className="w-1 h-1 rounded-full bg-sky-400"></span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold">{selectedDate ? formatDate(selectedDate) : 'All Meetings'}</h3>
+            <Button onClick={openAdd} accent="linear-gradient(135deg,#38BDF8,#0EA5E9)" className="!px-3 !py-1.5"><Icon name="plus" size={14} /></Button>
+          </div>
+          {selectedDate ? <button onClick={() => setSelectedDate(null)} className="text-xs text-sky-400 mb-3 hover:underline">Show all meetings</button> : null}
+          <div className="space-y-2.5 max-h-[360px] overflow-y-auto scrollbar-thin pr-1">
+            {listSource.length === 0 ? <EmptyState icon="calendar" title="No meetings" sub="Add a meeting to get started" /> : listSource.map(m => (
+              <div key={m.id} className={`rounded-xl p-3 border ${m.completed ? 'border-white/5 bg-white/[0.02] opacity-50' : 'border-white/10 bg-white/[0.03]'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className={`text-sm font-medium truncate ${m.completed ? 'line-through' : ''}`}>{m.title}</div>
+                    <div className="text-xs text-white/40 flex items-center gap-1 mt-0.5"><Icon name="clock" size={11} />{formatDate(m.date)} · {m.time}{m.reminder ? <Icon name="bell" size={11} className="ml-1" /> : null}</div>
+                    {m.notes ? <div className="text-xs text-white/40 mt-1">{m.notes}</div> : null}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <IconButton icon="check" onClick={() => toggleComplete(m.id)} title="Toggle complete" />
+                    <IconButton icon="edit" onClick={() => openEdit(m)} title="Edit" />
+                    <IconButton icon="trash" danger onClick={() => setConfirmId(m.id)} title="Delete" />
+                  </div>
+                </div>
+                {confirmId === m.id ? <div className="mt-2"><ConfirmBar label="Delete meeting?" onConfirm={() => remove(m.id)} onCancel={() => setConfirmId(null)} /></div> : null}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Meeting' : 'Add Meeting'}>
+        <form onSubmit={save} className="space-y-4">
+          <Field label="Title"><input required className={inputCls} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Client call, review, etc." /></Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Date"><input required type="date" className={inputCls} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+            <Field label="Time"><input required type="time" className={inputCls} value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></Field>
+          </div>
+          <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+          <label className="flex items-center gap-2 text-sm text-white/70">
+            <input type="checkbox" checked={form.reminder} onChange={e => setForm({ ...form, reminder: e.target.checked })} className="w-4 h-4 rounded accent-sky-400" />
+            Set reminder
+          </label>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" accent="linear-gradient(135deg,#38BDF8,#0EA5E9)" className="flex-1 justify-center">{editing ? 'Save Changes' : 'Add Meeting'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// NOTES
+// ============================================================
+function NotesView({ notes, setNotes }: { notes: Note[]; setNotes: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Note | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const [search, setSearch] = useState('');
+  const empty = { title: '', content: '', tags: '' };
+  const [form, setForm] = useState<any>(empty);
+
+  const filtered = notes.filter(n => (n.title + n.content + n.tags.join(' ')).toLowerCase().includes(search.toLowerCase()));
+  const sorted = [...filtered].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (b.date > a.date ? 1 : -1));
+
+  function openAdd() { setEditing(null); setForm(empty); setModalOpen(true); }
+  function openEdit(n: Note) { setEditing(n); setForm({ title: n.title, content: n.content, tags: n.tags.join(', ') }); setModalOpen(true); }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.title) return;
+    const tags = form.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+    if (editing) setNotes((prev: Note[]) => prev.map(n => n.id === editing.id ? { ...n, title: form.title, content: form.content, tags } : n));
+    else setNotes((prev: Note[]) => [...prev, { id: uid(), title: form.title, content: form.content, tags, pinned: false, date: todayISO() }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setNotes((prev: Note[]) => prev.filter(n => n.id !== id)); setConfirmId(null); }
+  function togglePin(id: ID) { setNotes((prev: Note[]) => prev.map(n => n.id === id ? { ...n, pinned: !n.pinned } : n)); }
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-violet-400/15 text-violet-400"><Icon name="notes" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Notes</h2><p className="text-sm text-white/40">{notes.length} notes</p></div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notes..." className={inputCls + ' pl-9 w-48'} />
+          </div>
+          <Button onClick={openAdd} accent="linear-gradient(135deg,#A78BFA,#8B5CF6)"><Icon name="plus" size={16} />New Note</Button>
+        </div>
+      </div>
+
+      {sorted.length === 0 ? <EmptyState icon="notes" title="No notes yet" sub="Capture ideas, reminders and plans" /> : (
+        <div className="masonry">
+          {sorted.map(n => (
+            <div key={n.id} className="glass rounded-2xl p-4 card-hover">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <h4 className="font-display font-semibold text-sm flex-1">{n.title}</h4>
+                <button onClick={() => togglePin(n.id)} className={`shrink-0 ${n.pinned ? 'text-violet-400' : 'text-white/25 hover:text-white/50'}`}><Icon name="pin" size={14} /></button>
+              </div>
+              <p className="text-sm text-white/60 whitespace-pre-wrap">{n.content}</p>
+              {n.tags.length ? <div className="flex flex-wrap gap-1.5 mt-3">{n.tags.map(t => <Pill key={t} color="#A78BFA">{t}</Pill>)}</div> : null}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+                <span className="text-xs text-white/30">{formatDate(n.date)}</span>
+                {confirmId === n.id ? (
+                  <ConfirmBar label="Delete?" onConfirm={() => remove(n.id)} onCancel={() => setConfirmId(null)} />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <IconButton icon="edit" onClick={() => openEdit(n)} title="Edit" />
+                    <IconButton icon="trash" danger onClick={() => setConfirmId(n.id)} title="Delete" />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Note' : 'New Note'}>
+        <form onSubmit={save} className="space-y-4">
+          <Field label="Title"><input required className={inputCls} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Content"><textarea className={inputCls} rows={5} value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></Field>
+          <Field label="Tags (comma separated)"><input className={inputCls} value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="idea, finance, urgent" /></Field>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" accent="linear-gradient(135deg,#A78BFA,#8B5CF6)" className="flex-1 justify-center">{editing ? 'Save Changes' : 'Add Note'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// GOALS
+// ============================================================
+function GoalsView({ goals, setGoals }: { goals: Goal[]; setGoals: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Goal | null>(null);
+  const [confirmId, setConfirmId] = useState<ID | null>(null);
+  const empty = { title: '', category: GOAL_CATEGORIES[0], targetAmount: '', currentAmount: '0', deadline: '', notes: '' };
+  const [form, setForm] = useState<any>(empty);
+
+  function openAdd() { setEditing(null); setForm(empty); setModalOpen(true); }
+  function openEdit(g: Goal) { setEditing(g); setForm({ title: g.title, category: g.category, targetAmount: String(g.targetAmount), currentAmount: String(g.currentAmount), deadline: g.deadline, notes: g.notes }); setModalOpen(true); }
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    const targetAmount = parseFloat(form.targetAmount), currentAmount = parseFloat(form.currentAmount) || 0;
+    if (!form.title || !targetAmount) return;
+    const payload = { title: form.title, category: form.category, targetAmount, currentAmount, deadline: form.deadline, notes: form.notes };
+    if (editing) setGoals((prev: Goal[]) => prev.map(g => g.id === editing.id ? { ...g, ...payload } : g));
+    else setGoals((prev: Goal[]) => [...prev, { id: uid(), ...payload }]);
+    setModalOpen(false);
+  }
+  function remove(id: ID) { setGoals((prev: Goal[]) => prev.filter(g => g.id !== id)); setConfirmId(null); }
+  function addFunds(id: ID, amt: number) { setGoals((prev: Goal[]) => prev.map(g => g.id === id ? { ...g, currentAmount: Math.max(0, g.currentAmount + amt) } : g)); }
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-pink-400/15 text-pink-400"><Icon name="target" size={20} /></div>
+          <div><h2 className="text-xl font-display font-bold">Goals</h2><p className="text-sm text-white/40">{goals.length} goals tracked</p></div>
+        </div>
+        <Button onClick={openAdd} accent="linear-gradient(135deg,#F472B6,#EC4899)"><Icon name="plus" size={16} />New Goal</Button>
+      </div>
+
+      {goals.length === 0 ? <EmptyState icon="target" title="No goals yet" sub="Set a savings or investment target to track progress" /> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {goals.map(g => {
+            const pct = Math.min(100, (g.currentAmount / g.targetAmount) * 100);
+            const daysLeft = g.deadline ? Math.ceil((new Date(g.deadline + 'T00:00:00').getTime() - Date.now()) / 86400000) : null;
+            return (
+              <Card key={g.id}>
+                <div className="flex items-start justify-between mb-1">
+                  <h4 className="font-display font-semibold">{g.title}</h4>
+                  <Pill color="#F472B6">{g.category}</Pill>
+                </div>
+                {g.deadline ? <div className="text-xs text-white/40 mb-3">{daysLeft! >= 0 ? `${daysLeft} days left` : 'Overdue'} · {formatDate(g.deadline)}</div> : <div className="mb-3"></div>}
+                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mb-2">
+                  <div className="h-full rounded-full" style={{ width: pct + '%', background: 'linear-gradient(90deg,#F472B6,#EC4899)' }}></div>
+                </div>
+                <div className="flex items-center justify-between text-sm mb-3">
+                  <span className="tabular-nums font-semibold">{formatINR(g.currentAmount)}</span>
+                  <span className="text-white/40 tabular-nums">of {formatINR(g.targetAmount)}</span>
+                </div>
+                {g.notes ? <p className="text-xs text-white/40 mb-3">{g.notes}</p> : null}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => addFunds(g.id, g.targetAmount * 0.1)} className="text-xs px-2.5 py-1.5 rounded-lg bg-pink-400/10 text-pink-300 hover:bg-pink-400/20">+10%</button>
+                  <button onClick={() => addFunds(g.id, 1000)} className="text-xs px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60">+₹1,000</button>
+                  <div className="flex-1"></div>
+                  <IconButton icon="edit" onClick={() => openEdit(g)} title="Edit" />
+                  <IconButton icon="trash" danger onClick={() => setConfirmId(g.id)} title="Delete" />
+                </div>
+                {confirmId === g.id ? <div className="mt-2"><ConfirmBar label="Delete goal?" onConfirm={() => remove(g.id)} onCancel={() => setConfirmId(null)} /></div> : null}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Goal' : 'New Goal'}>
+        <form onSubmit={save} className="space-y-4">
+          <Field label="Title"><input required className={inputCls} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Emergency fund, new laptop..." /></Field>
+          <Field label="Category">
+            <select className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              {GOAL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Target Amount (₹)"><input required type="number" step="0.01" className={inputCls} value={form.targetAmount} onChange={e => setForm({ ...form, targetAmount: e.target.value })} /></Field>
+            <Field label="Current Amount (₹)"><input type="number" step="0.01" className={inputCls} value={form.currentAmount} onChange={e => setForm({ ...form, currentAmount: e.target.value })} /></Field>
+          </div>
+          <Field label="Deadline (optional)"><input type="date" className={inputCls} value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></Field>
+          <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" accent="linear-gradient(135deg,#F472B6,#EC4899)" className="flex-1 justify-center">{editing ? 'Save Changes' : 'Add Goal'}</Button>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} className="flex-1 justify-center">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function AnalyticsView({ data }: { data: any }) {
+  const { expenses, incomes, forexTrades, cryptoHoldings, business } = data;
+  const months = lastNMonthKeys(12);
+  const incomeByMonth = months.map(m => incomes.filter((i: Income) => monthKey(i.date) === m).reduce((s: number, i: Income) => s + i.amount, 0));
+  const expenseByMonth = months.map(m => expenses.filter((e: Expense) => monthKey(e.date) === m).reduce((s: number, e: Expense) => s + e.amount, 0));
+  let netCum = 0;
+  const netTrend = months.map((_, i) => { netCum += incomeByMonth[i] - expenseByMonth[i]; return netCum; });
+
+  const catTotals: Record<string, number> = {};
+  expenses.forEach((e: Expense) => { catTotals[e.category] = (catTotals[e.category] || 0) + e.amount; });
+
+  const businessByType = BUSINESS_TYPE_OPTIONS.map(bt => business.filter((b: BusinessEntry) => resolveBusinessType(b) === bt.key).reduce((s: number, b: BusinessEntry) => s + (b.revenue - b.expense), 0));
+
+  const closed = forexTrades.filter((t: ForexTrade) => t.status === 'Closed' && t.exitPrice != null);
+  const wins = closed.filter((t: ForexTrade) => tradePnl(t) > 0).length;
+  const losses = closed.length - wins;
+  let fCum = 0;
+  const forexTrend = [...closed].sort((a: ForexTrade, b: ForexTrade) => (a.date > b.date ? 1 : -1)).map((t: ForexTrade) => { fCum += tradePnl(t); return fCum; });
+  const forexLabels = [...closed].sort((a: ForexTrade, b: ForexTrade) => (a.date > b.date ? 1 : -1)).map((t: ForexTrade) => formatDate(t.date));
+
+  const cryptoAlloc = cryptoHoldings.map((h: CryptoHolding) => h.currentPrice * h.quantity);
+  const cryptoLabels = cryptoHoldings.map((h: CryptoHolding) => h.symbol || h.coin);
+
+  const trendConfig = {
+    type: 'line',
+    data: { labels: months.map(monthLabel), datasets: [
+      { label: 'Income', data: incomeByMonth, borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.1)', tension: 0.35, fill: true, pointRadius: 2 },
+      { label: 'Expense', data: expenseByMonth, borderColor: '#FB7185', backgroundColor: 'rgba(251,113,133,0.1)', tension: 0.35, fill: true, pointRadius: 2 },
+    ] },
+    options: baseChartOptions(),
+  };
+  const netTrendConfig = {
+    type: 'line',
+    data: { labels: months.map(monthLabel), datasets: [{ label: 'Cumulative Net', data: netTrend, borderColor: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.12)', fill: true, tension: 0.35, pointRadius: 2 }] },
+    options: baseChartOptions(),
+  };
+  const catConfig = {
+    type: 'doughnut',
+    data: { labels: Object.keys(catTotals), datasets: [{ data: Object.values(catTotals), backgroundColor: CHART_PALETTE, borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '68%' },
+  };
+  const bizConfig = {
+    type: 'bar',
+    data: { labels: BUSINESS_TYPE_OPTIONS.map(b => b.label), datasets: [{ label: 'Profit', data: businessByType, backgroundColor: BUSINESS_TYPE_OPTIONS.map(b => b.color), borderRadius: 8, maxBarThickness: 60 }] },
+    options: baseChartOptions({ plugins: { legend: { display: false } } }),
+  };
+  const winLossConfig = {
+    type: 'doughnut',
+    data: { labels: ['Wins', 'Losses'], datasets: [{ data: [wins, losses], backgroundColor: ['#34D399', '#FB7185'], borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '70%' },
+  };
+  const forexTrendConfig = {
+    type: 'line',
+    data: { labels: forexLabels, datasets: [{ label: 'Cumulative P&L', data: forexTrend, borderColor: '#818CF8', backgroundColor: 'rgba(129,140,248,0.15)', fill: true, tension: 0.35, pointRadius: 2 }] },
+    options: baseChartOptions(),
+  };
+  const cryptoConfig = {
+    type: 'doughnut',
+    data: { labels: cryptoLabels, datasets: [{ data: cryptoAlloc, backgroundColor: CHART_PALETTE, borderWidth: 0 }] },
+    options: { ...baseChartOptions(), cutout: '68%' },
+  };
+
+  return (
+    <div className="view-enter space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-emerald-400/15 text-emerald-400"><Icon name="chart" size={20} /></div>
+        <div><h2 className="text-xl font-display font-bold">Analytics</h2><p className="text-sm text-white/40">Full picture across every module</p></div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Card><h3 className="font-display font-semibold mb-4">Income vs Expenses (12mo)</h3><ChartCanvas config={trendConfig} /></Card>
+        <Card><h3 className="font-display font-semibold mb-4">Cumulative Net Cash Flow</h3><ChartCanvas config={netTrendConfig} /></Card>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card><h3 className="font-display font-semibold mb-4">Expense Categories</h3>{Object.keys(catTotals).length ? <ChartCanvas config={catConfig} height={230} /> : <EmptyState icon="wallet" title="No data" sub="Add expenses to populate" />}</Card>
+        <Card><h3 className="font-display font-semibold mb-4">Business Profit by Type</h3><ChartCanvas config={bizConfig} height={230} /></Card>
+        <Card><h3 className="font-display font-semibold mb-4">Crypto Allocation</h3>{cryptoAlloc.length ? <ChartCanvas config={cryptoConfig} height={230} /> : <EmptyState icon="coin" title="No holdings" sub="Add crypto to populate" />}</Card>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2"><h3 className="font-display font-semibold mb-4">Forex Cumulative P&L</h3>{closed.length ? <ChartCanvas config={forexTrendConfig} /> : <EmptyState icon="activity" title="No closed trades" sub="Close trades to populate" />}</Card>
+        <Card><h3 className="font-display font-semibold mb-4">Forex Win / Loss</h3>{closed.length ? <ChartCanvas config={winLossConfig} height={220} /> : <EmptyState icon="target" title="No data" sub="Close trades to populate" />}</Card>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// APP SHELL
+// ============================================================
+function Sidebar({ view, setView, mobileOpen, setMobileOpen, authUser, authReady, signingIn, authError, onSignIn, onSignOut }: any) {
+  return (
+    <>
+      {mobileOpen ? <div className="fixed inset-0 bg-black/60 z-30 lg:hidden" onClick={() => setMobileOpen(false)}></div> : null}
+      <aside className={`fixed lg:sticky top-0 h-screen w-64 shrink-0 glass-strong border-r border-white/5 z-40 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
+        <div className="flex items-center gap-3 px-5 py-6" style={{ paddingTop: 'calc(var(--safe-top) + 1.5rem)' }}>
+          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
+            <img src="./icons/tmr-logo.png" alt="TMR" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <div className="font-display font-bold leading-tight">TMR</div>
+            <div className="text-[11px] text-white/40 leading-tight">Expense Tracker</div>
+          </div>
+        </div>
+        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 space-y-1">
+          {MODULES.map(m => (
+            <button key={m.key} data-active={view === m.key} onClick={() => { setView(m.key); setMobileOpen(false); }}
+              className="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white">
+              <span className="w-1 h-5 rounded-full nav-dot" style={{ background: m.color }}></span>
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: view === m.key ? m.color + '22' : 'transparent', color: view === m.key ? m.color : undefined }}>
+                <Icon name={m.icon} size={16} />
+              </span>
+              <span className={view === m.key ? 'text-white' : ''}>{m.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {authReady ? (
+          <div className="mx-3 mb-3">
+            {authUser ? (
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10">
+                {authUser.photoURL ? (
+                  <img src={authUser.photoURL} alt={authUser.displayName || 'Account'} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-400/20 text-emerald-300 flex items-center justify-center text-xs font-semibold shrink-0">
+                    {(authUser.displayName || authUser.email || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-white truncate">{authUser.displayName || 'Signed in'}</div>
+                  <div className="text-[11px] text-white/40 truncate">{authUser.email}</div>
+                </div>
+                <IconButton icon="logout" onClick={onSignOut} title="Sign out" />
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={onSignIn} disabled={signingIn}
+                  className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium text-white/80 hover:text-white transition-colors focus-ring disabled:opacity-60">
+                  {signingIn ? <span className="w-4 h-4 rounded-full border-2 border-white/25 border-t-white/80 animate-spin"></span> : <GoogleGlyph size={16} />}
+                  {signingIn ? 'Signing in…' : 'Continue with Google'}
+                </button>
+                {authError ? <div className="text-[11px] text-rose-400 mt-1.5 px-1 leading-snug">{authError}</div> : null}
+              </>
+            )}
+          </div>
+        ) : null}
+
+        <div className="p-4 mx-3 rounded-xl bg-white/5 border border-white/5" style={{ marginBottom: 'calc(var(--safe-bottom) + 1rem)' }}>
+          <div className="text-xs text-white/40 leading-relaxed">All data stays on this device via LocalStorage. No accounts, no cloud.</div>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function TopBar({ view, onMenu, theme, onToggleTheme, authUser }: { view: string; onMenu: () => void; theme: 'dark' | 'light'; onToggleTheme: () => void; authUser: { displayName: string | null; email: string | null } | null }) {
+  const meta = MODULES.find(m => m.key === view)!;
+  const [now] = useState(new Date());
+  return (
+    <header className="sticky top-0 z-20 glass border-b border-white/5 px-4 sm:px-6 py-4 flex items-center justify-between"
+      style={{ paddingTop: 'calc(var(--safe-top) + 1rem)' }}>
+      <div className="flex items-center gap-3">
+        <button onClick={onMenu} className="lg:hidden w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center">
+          <Icon name="filter" size={16} />
+        </button>
+        <div>
+          <h1 className="font-display font-bold text-lg leading-tight">{meta.label}</h1>
+          <p className="text-xs text-white/40">{now.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="hidden sm:flex items-center gap-2 pulse rounded-full">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span className="text-xs text-white/50">{authUser ? 'Synced to cloud' : 'Synced locally'}</span>
+        </div>
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      </div>
+    </header>
+  );
+}
+
+function App() {
+  const [view, setView] = useState('dashboard');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useLocalStorageState<'dark' | 'light'>('theme', 'dark');
+  CURRENT_THEME = theme;
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+  const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [setTheme]);
+  const { user: authUser, authReady, signingIn, authError, signIn, signOutUser } = useAuthUser();
+
+  const uid = authUser?.uid ?? null;
+  const [expenses, setExpenses] = useSyncedCollection<Expense>('expenses', [], 'expenses', uid);
+  const [incomes, setIncomes] = useSyncedCollection<Income>('incomes', [], 'incomes', uid);
+  const [forexTrades, setForexTrades] = useSyncedCollection<ForexTrade>('forexTrades', [], 'forexTrades', uid);
+  const [cryptoHoldings, setCryptoHoldings] = useSyncedCollection<CryptoHolding>('cryptoHoldings', [], 'cryptoHoldings', uid);
+  const [business, setBusiness] = useSyncedCollection<BusinessEntry>('business', [], 'business', uid);
+  const [meetings, setMeetings] = useSyncedCollection<Meeting>('meetings', [], 'meetings', uid);
+  const [notes, setNotes] = useSyncedCollection<Note>('notes', [], 'notes', uid);
+  const [goals, setGoals] = useSyncedCollection<Goal>('goals', [], 'goals', uid);
+
+  const data = { expenses, incomes, forexTrades, cryptoHoldings, business, meetings, notes, goals };
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar view={view} setView={setView} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
+        authUser={authUser} authReady={authReady} signingIn={signingIn} authError={authError} onSignIn={signIn} onSignOut={signOutUser} />
+      <div className="flex-1 min-w-0">
+        <TopBar view={view} onMenu={() => setMobileOpen(true)} theme={theme} onToggleTheme={toggleTheme} authUser={authUser} />
+        <main className="p-4 sm:p-6 max-w-[1600px] mx-auto" style={{ paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}>
+          {view === 'dashboard' && <DashboardView data={data} />}
+          {view === 'expenses' && <TransactionView title="Expense Tracker" accent="#FB7185" icon="wallet" items={expenses} setItems={setExpenses} categories={EXPENSE_CATEGORIES} kind="Expense" filterStorageKey="expenseDateFilter" allTimeLabel="Total Expenses" />}
+          {view === 'income' && <TransactionView title="Income Tracker" accent="#34D399" icon="trendingUp" items={incomes} setItems={setIncomes} categories={INCOME_CATEGORIES} kind="Income" filterStorageKey="incomeDateFilter" allTimeLabel="Total Income" />}
+          {view === 'forex' && <ForexView trades={forexTrades} setTrades={setForexTrades} />}
+          {view === 'crypto' && <CryptoView holdings={cryptoHoldings} setHoldings={setCryptoHoldings} />}
+          {view === 'business' && <BusinessView business={business} setBusiness={setBusiness} />}
+          {view === 'scheduler' && <SchedulerView meetings={meetings} setMeetings={setMeetings} />}
+          {view === 'notes' && <NotesView notes={notes} setNotes={setNotes} />}
+          {view === 'goals' && <GoalsView goals={goals} setGoals={setGoals} />}
+          {view === 'analytics' && <AnalyticsView data={data} />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+
+<script>
+  (function () {
+    var code = document.getElementById('app-source').textContent;
+    var output = Babel.transform(code, {
+      presets: [
+        ['typescript', { isTSX: true, allExtensions: true }],
+        ['react', { development: false }]
+      ],
+      filename: 'app.tsx'
+    }).code;
+    var script = document.createElement('script');
+    script.text = output;
+    document.body.appendChild(script);
+  })();
+</script>
+
+<!-- PWA: register service worker (relative path so it works under a GitHub Pages subpath) -->
+<script>
+  if ('serviceWorker' in navigator) {
+    // When a new service worker takes control (i.e. we just deployed an
+    // update), reload once so this tab/installed PWA actually picks up the
+    // new index.html + app code instead of continuing to run the old
+    // version from memory until the user happens to manually refresh.
+    // Without this, skipWaiting()/clients.claim() in service-worker.js only
+    // affect *future* loads — an already-open page keeps running old JS.
+    let tmrSwRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (tmrSwRefreshing) return;
+      tmrSwRefreshing = true;
+      window.location.reload();
+    });
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./service-worker.js').catch(function (err) {
+        console.warn('Service worker registration failed:', err);
+      });
+    });
+  }
+</script>
+</body>
+</html>
