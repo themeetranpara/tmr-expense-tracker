@@ -190,6 +190,37 @@
   [data-theme="light"] .hover\:text-white\/50:hover{color:rgba(20,22,27,.62);}
   [data-theme="light"] .hover\:text-white\/80:hover{color:rgba(20,22,27,.85);}
   [data-theme="light"] .focus\:bg-white:focus{background-color:#ffffff;}
+
+  /* Global Search input: explicit text-color pin, both themes.
+     Needed because `color-scheme: dark` / `light` (set on :root above, for
+     native scrollbars/date pickers) makes Safari/WebKit apply its own
+     native form-control text rendering via -webkit-text-fill-color, which
+     sits outside the normal CSS cascade and can silently override a plain
+     `color`/`text-white` class — worst in dark mode, exactly what was
+     reported. Pinning both `color` and `-webkit-text-fill-color` here
+     (with !important, since that's specifically what's needed to beat a
+     UA/-webkit- override, not just cascade specificity) fixes it on
+     desktop Safari/Chrome and iPhone/iPad Safari + installed PWA alike. */
+  .tmr-search-input{
+    color:#F5F5F7 !important;
+    -webkit-text-fill-color:#F5F5F7 !important;
+    caret-color:#34D399;
+  }
+  .tmr-search-input::placeholder{
+    color:rgba(245,245,247,0.35) !important;
+    -webkit-text-fill-color:rgba(245,245,247,0.35) !important;
+    opacity:1;
+  }
+  [data-theme="light"] .tmr-search-input{
+    color:#14161B !important;
+    -webkit-text-fill-color:#14161B !important;
+    caret-color:#059669;
+  }
+  [data-theme="light"] .tmr-search-input::placeholder{
+    color:rgba(20,22,27,0.42) !important;
+    -webkit-text-fill-color:rgba(20,22,27,0.42) !important;
+    opacity:1;
+  }
 </style>
 </head>
 <body class="font-body">
@@ -2333,7 +2364,7 @@ function GlobalSearch({ open, onClose, data, onNavigate }: {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search expenses, income, notes..."
-            className="flex-1 min-w-0 bg-transparent outline-none text-base text-white placeholder-white/30"
+            className="tmr-search-input flex-1 min-w-0 bg-transparent outline-none text-base"
           />
           {query ? (
             <button type="button" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="Clear search"
