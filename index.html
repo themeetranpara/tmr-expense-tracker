@@ -1105,18 +1105,29 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
   const [editing, setEditing] = useState<any>(null);
   const [confirmId, setConfirmId] = useState<ID | null>(null);
   const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>(filterStorageKey, { mode: 'all', start: '', end: '' });
+  // Category filter composes with the date filter above rather than
+  // replacing it: date filter narrows by time range first, then this
+  // narrows by category — same pattern, applied in sequence.
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [form, setForm] = useState({ amount: '', category: categories[0], description: '', date: todayISO() });
 
-  const filtered = useMemo(() => {
+  const dateFiltered = useMemo(() => {
     const { start, end } = resolveDateRange(dateFilter);
     if (!start && !end) return items;
     return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
   }, [items, dateFilter]);
+  const filtered = useMemo(() => (
+    categoryFilter === 'all' ? dateFiltered : dateFiltered.filter(i => i.category === categoryFilter)
+  ), [dateFiltered, categoryFilter]);
   const sorted = useMemo(() => [...filtered].sort((a, b) => (b.date > a.date ? 1 : -1)), [filtered]);
   const total = useMemo(() => filtered.reduce((s, i) => s + i.amount, 0), [filtered]);
 
+  // "By Category" chart intentionally reflects the date range only (not the
+  // category filter) — it's the at-a-glance breakdown you'd use to *pick* a
+  // category below, so narrowing it to a single slice once one is selected
+  // would defeat its purpose.
   const categoryTotals: Record<string, number> = {};
-  filtered.forEach(i => { categoryTotals[i.category] = (categoryTotals[i.category] || 0) + i.amount; });
+  dateFiltered.forEach(i => { categoryTotals[i.category] = (categoryTotals[i.category] || 0) + i.amount; });
 
   function openAdd() {
     setEditing(null);
@@ -1162,7 +1173,11 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
             <p className="text-sm text-white/40">{filtered.length} entries · {formatINR(total)} total</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className={inputCls + ' w-auto min-w-[9.5rem]'}>
+            <option value="all">All Categories</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent={accent} allTimeLabel={allTimeLabel} />
           <Button onClick={openAdd} accent={`linear-gradient(135deg,${accent},${accent})`}><Icon name="plus" size={16} />Add {kind}</Button>
         </div>
@@ -1170,7 +1185,15 @@ function TransactionView({ title, accent, icon, items, setItems, categories, kin
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Card className="xl:col-span-2 !p-0 overflow-hidden">
-          {sorted.length === 0 ? <div className="p-6"><EmptyState icon={icon} title={`No ${kind.toLowerCase()}s yet`} sub={`Add your first ${kind.toLowerCase()} to start tracking`} /></div> : (
+          {sorted.length === 0 ? (
+            <div className="p-6">
+              {items.length === 0 ? (
+                <EmptyState icon={icon} title={`No ${kind.toLowerCase()}s yet`} sub={`Add your first ${kind.toLowerCase()} to start tracking`} />
+              ) : (
+                <EmptyState icon={icon} title={`No ${kind.toLowerCase()}s match this filter`} sub="Try a different category or date range" />
+              )}
+            </div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
