@@ -31,26 +31,16 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin></script>
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- Self-hosted utility CSS (includes the Tailwind base reset).
+     Replaces the former https://cdn.tailwindcss.com runtime dependency — a
+     browser-side JIT compiler that was a single point of failure for ALL layout
+     styling: if it was slow, blocked or unreachable, every utility class went
+     dead and the app rendered as raw HTML. Relative path so it resolves under
+     the GitHub Pages project subpath /tmr-expense-tracker/. Loaded BEFORE the
+     inline <style> below so the app's own custom rules keep the last word. -->
+<link rel="stylesheet" href="./tailwind.css">
 <!-- Firebase Auth (Phase 1) — isolated module, see /firebase/firebase-init.js and /firebase/firebase-config.js -->
 <script type="module" src="./firebase/firebase-init.js"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        fontFamily: {
-          display: ['Manrope', 'sans-serif'],
-          body: ['Inter', 'sans-serif'],
-        },
-        colors: {
-          base: '#0A0B0E',
-          surface: '#111318',
-          panel: '#15171D',
-        }
-      }
-    }
-  }
-</script>
 <style>
   :root{
     --emerald:#34D399; --emerald-dim:#10B981;
