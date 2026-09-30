@@ -826,39 +826,141 @@ function ConfirmBar({ onConfirm, onCancel, label }: { onConfirm: () => void; onC
 // ============================================================
 // DASHBOARD
 // ============================================================
+// ---------------------- dashboard period helpers ----------------------
+// Which Dashboard figures respond to the period filter:
+//   YES - income, expenses, net savings, realised forex P&L, business profit,
+//         expense-category breakdown, recent transactions, income-vs-expenses trend.
+//   NO  - crypto P&L / value (UNREALISED: priced at today's market, so a coin bought
+//         last year that you still hold is part of your position now and date-scoping
+//         it would be meaningless), Active Goals (a current-state count; goals carry a
+//         deadline, not a transaction date) and Upcoming Meetings (deliberately
+//         forward-looking, already scoped to >= today).
+function inRange<T extends { date: string }>(items: T[], start: string | null, end: string | null): T[] {
+  if (!start && !end) return items;
+  return items.filter(i => (!start || i.date >= start) && (!end || i.date <= end));
+}
+function addDaysISO(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return dateToISO(d);
+}
+function daysBetweenISO(a: string, b: string): number {
+  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000);
+}
+function monthKeysBetween(startKey: string, endKey: string): string[] {
+  const out: string[] = [];
+  let y = Number(startKey.slice(0, 4)), m = Number(startKey.slice(5, 7));
+  const ey = Number(endKey.slice(0, 4)), em = Number(endKey.slice(5, 7));
+  let guard = 0;
+  while ((y < ey || (y === ey && m <= em)) && guard++ < 600) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+function shortDayLabel(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+function periodCaption(filter: DateFilterState, s: string, e: string): string {
+  switch (filter.mode) {
+    case 'today': return 'today';
+    case 'week': return 'this week';
+    case 'month': return 'this month';
+    case 'year': return 'this year';
+    case 'custom': return `${formatDate(s)} - ${formatDate(e)}`;
+    default: return 'all time';
+  }
+}
+// Income vs Expenses trend, bucketed to suit the chosen window - a rolling 6-month
+// bar chart is meaningless once the user picks "Today", so short ranges bucket by day
+// and long ones by month. All Time keeps the original rolling 6-month view unchanged.
+function buildDashboardTrend(filter: DateFilterState, incomes: Income[], expenses: Expense[]) {
+  const sumOn = (arr: any[], pred: (d: string) => boolean) =>
+    arr.filter(x => pred(x.date)).reduce((acc: number, x: any) => acc + x.amount, 0);
+  const { start, end } = resolveDateRange(filter);
+  if (!start && !end) {
+    const months = lastNMonthKeys(6);
+    return {
+      labels: months.map(monthLabel),
+      income: months.map(m => sumOn(incomes, d => monthKey(d) === m)),
+      expense: months.map(m => sumOn(expenses, d => monthKey(d) === m)),
+      caption: 'all time',
+      chartNote: 'Last 6 months',
+    };
+  }
+  const dates = [...incomes, ...expenses].map((x: any) => x.date).filter(Boolean).sort();
+  const s = start || dates[0] || todayISO();
+  const e = end || todayISO();
+  const caption = periodCaption(filter, s, e);
+  const span = daysBetweenISO(s, e);
+  if (span < 0) return { labels: [], income: [], expense: [], caption, chartNote: '' };
+  if (span <= 45) {
+    const days: string[] = [];
+    for (let i = 0; i <= span; i++) days.push(addDaysISO(s, i));
+    return {
+      labels: days.map(shortDayLabel),
+      income: days.map(d => sumOn(incomes, x => x === d)),
+      expense: days.map(d => sumOn(expenses, x => x === d)),
+      caption,
+      chartNote: 'Daily',
+    };
+  }
+  const months = monthKeysBetween(s.slice(0, 7), e.slice(0, 7));
+  return {
+    labels: months.map(monthLabel),
+    income: months.map(m => sumOn(incomes, d => monthKey(d) === m)),
+    expense: months.map(m => sumOn(expenses, d => monthKey(d) === m)),
+    caption,
+    chartNote: 'Monthly',
+  };
+}
+
 function DashboardView({ data }: { data: any }) {
   const { expenses, incomes, forexTrades, cryptoHoldings, business, goals, meetings } = data;
 
-  const totalIncome = useMemo(() => incomes.reduce((s: number, i: Income) => s + i.amount, 0), [incomes]);
-  const totalExpense = useMemo(() => expenses.reduce((s: number, e: Expense) => s + e.amount, 0), [expenses]);
+  // Dashboard period filter - reuses the SAME DateFilterState / resolveDateRange /
+  // DateRangeFilter machinery already used by Expenses, Income and Business Profit,
+  // and is persisted per device exactly like those. Defaults to This Month.
+  const [dateFilter, setDateFilter] = useLocalStorageState<DateFilterState>('dashboardDateFilter', { mode: 'month', start: '', end: '' });
+  const { start, end } = resolveDateRange(dateFilter);
+  const isAllTime = !start && !end;
+
+  const periodIncomes  = useMemo(() => inRange<Income>(incomes, start, end), [incomes, start, end]);
+  const periodExpenses = useMemo(() => inRange<Expense>(expenses, start, end), [expenses, start, end]);
+  const periodBusiness = useMemo(() => inRange<BusinessEntry>(business, start, end), [business, start, end]);
+  const periodTrades   = useMemo(() => inRange<ForexTrade>(forexTrades, start, end), [forexTrades, start, end]);
+  const trend = useMemo(() => buildDashboardTrend(dateFilter, incomes, expenses), [dateFilter, incomes, expenses]);
+
+  const totalIncome = useMemo(() => periodIncomes.reduce((s: number, i: Income) => s + i.amount, 0), [periodIncomes]);
+  const totalExpense = useMemo(() => periodExpenses.reduce((s: number, e: Expense) => s + e.amount, 0), [periodExpenses]);
   const netSavings = totalIncome - totalExpense;
 
-  const forexPnl = useMemo(() => forexTrades.filter((t: ForexTrade) => t.status === 'Closed' && t.exitPrice != null)
-    .reduce((s: number, t: ForexTrade) => s + tradePnl(t), 0), [forexTrades]);
+  const forexPnl = useMemo(() => periodTrades.filter((t: ForexTrade) => t.status === 'Closed' && t.exitPrice != null)
+    .reduce((s: number, t: ForexTrade) => s + tradePnl(t), 0), [periodTrades]);
 
   const cryptoPnl = useMemo(() => cryptoHoldings.reduce((s: number, h: CryptoHolding) => s + (h.currentPrice - h.avgBuyPrice) * h.quantity, 0), [cryptoHoldings]);
   const cryptoValue = useMemo(() => cryptoHoldings.reduce((s: number, h: CryptoHolding) => s + h.currentPrice * h.quantity, 0), [cryptoHoldings]);
 
-  const businessProfit = useMemo(() => business.reduce((s: number, b: BusinessEntry) => s + (b.revenue - b.expense), 0), [business]);
+  const businessProfit = useMemo(() => periodBusiness.reduce((s: number, b: BusinessEntry) => s + (b.revenue - b.expense), 0), [periodBusiness]);
 
-  const netPosition = netSavings + forexPnl + cryptoPnl + businessProfit;
-
-  const months = lastNMonthKeys(6);
-  const incomeByMonth = months.map(m => incomes.filter((i: Income) => monthKey(i.date) === m).reduce((s: number, i: Income) => s + i.amount, 0));
-  const expenseByMonth = months.map(m => expenses.filter((e: Expense) => monthKey(e.date) === m).reduce((s: number, e: Expense) => s + e.amount, 0));
+  // All Time keeps the original formula (crypto included). For a bounded period the
+  // unrealised crypto P&L is left out: it is today's mark-to-market on holdings you
+  // still own, not value realised inside the window, so folding it in would distort
+  // the figure. The subtitle states which formula is in use.
+  const netPosition = netSavings + forexPnl + businessProfit + (isAllTime ? cryptoPnl : 0);
 
   const categoryTotals: Record<string, number> = {};
-  expenses.forEach((e: Expense) => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
+  periodExpenses.forEach((e: Expense) => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
   const catLabels = Object.keys(categoryTotals);
   const catValues = catLabels.map(l => categoryTotals[l]);
 
   const recent = useMemo(() => {
     const items = [
-      ...incomes.map((i: Income) => ({ ...i, kind: 'Income' })),
-      ...expenses.map((e: Expense) => ({ ...e, kind: 'Expense' })),
+      ...periodIncomes.map((i: Income) => ({ ...i, kind: 'Income' })),
+      ...periodExpenses.map((e: Expense) => ({ ...e, kind: 'Expense' })),
     ].sort((a, b) => (b.date > a.date ? 1 : -1)).slice(0, 6);
     return items;
-  }, [incomes, expenses]);
+  }, [periodIncomes, periodExpenses]);
 
   const upcomingMeetings = useMemo(() => meetings.filter((m: Meeting) => !m.completed && m.date >= todayISO())
     .sort((a: Meeting, b: Meeting) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 4), [meetings]);
@@ -866,10 +968,10 @@ function DashboardView({ data }: { data: any }) {
   const barConfig = {
     type: 'bar',
     data: {
-      labels: months.map(monthLabel),
+      labels: trend.labels,
       datasets: [
-        { label: 'Income', data: incomeByMonth, backgroundColor: '#34D399', borderRadius: 6, maxBarThickness: 22 },
-        { label: 'Expense', data: expenseByMonth, backgroundColor: '#FB7185', borderRadius: 6, maxBarThickness: 22 },
+        { label: 'Income', data: trend.income, backgroundColor: '#34D399', borderRadius: 6, maxBarThickness: 22 },
+        { label: 'Expense', data: trend.expense, backgroundColor: '#FB7185', borderRadius: 6, maxBarThickness: 22 },
       ],
     },
     options: baseChartOptions(),
@@ -883,13 +985,19 @@ function DashboardView({ data }: { data: any }) {
 
   return (
     <div className="view-enter space-y-6">
+      {/* Period selector - same component, styling and Custom Range flow as Expenses/Income */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-white/40">Showing {trend.caption}</p>
+        <DateRangeFilter filter={dateFilter} setFilter={setDateFilter} accent="#34D399" allTimeLabel="Lifetime" />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Net Position" value={formatINR(netPosition)} icon="target" accent="#34D399" sub="Income − expenses + trading + crypto + business" />
-        <StatCard label="Total Income" value={formatINR(totalIncome)} icon="trendingUp" accent="#34D399" sub={`${incomes.length} entries`} />
-        <StatCard label="Total Expenses" value={formatINR(totalExpense)} icon="wallet" accent="#FB7185" sub={`${expenses.length} entries`} />
-        <StatCard label="Business Profit" value={formatINR(businessProfit)} icon="briefcase" accent="#D4AF37" sub={`${business.length} entries`} />
-        <StatCard label="Forex P&L" value={formatINR(forexPnl)} icon="activity" accent="#818CF8" sub={`${forexTrades.length} trades`} />
-        <StatCard label="Crypto P&L" value={formatINR(cryptoPnl)} icon="coin" accent="#F59E0B" sub={`Value ${formatINR(cryptoValue)}`} />
+        <StatCard label="Net Position" value={formatINR(netPosition)} icon="target" accent="#34D399" sub={isAllTime ? 'Income − expenses + trading + crypto + business' : 'Income − expenses + trading + business (excl. unrealised crypto)'} />
+        <StatCard label="Total Income" value={formatINR(totalIncome)} icon="trendingUp" accent="#34D399" sub={`${periodIncomes.length} entries`} />
+        <StatCard label="Total Expenses" value={formatINR(totalExpense)} icon="wallet" accent="#FB7185" sub={`${periodExpenses.length} entries`} />
+        <StatCard label="Business Profit" value={formatINR(businessProfit)} icon="briefcase" accent="#D4AF37" sub={`${periodBusiness.length} entries`} />
+        <StatCard label="Forex P&L" value={formatINR(forexPnl)} icon="activity" accent="#818CF8" sub={`${periodTrades.length} trades`} />
+        <StatCard label="Crypto P&L" value={formatINR(cryptoPnl)} icon="coin" accent="#F59E0B" sub={`Value ${formatINR(cryptoValue)}${isAllTime ? '' : ' · all time'}`} />
         <StatCard label="Active Goals" value={String(goals.filter((g: Goal) => g.currentAmount < g.targetAmount).length)} icon="target" accent="#F472B6" sub={`${goals.length} total`} />
         <StatCard label="Upcoming Meetings" value={String(upcomingMeetings.length)} icon="calendar" accent="#38BDF8" sub="Next 4 shown below" />
       </div>
@@ -898,20 +1006,20 @@ function DashboardView({ data }: { data: any }) {
         <Card className="xl:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display font-semibold">Income vs Expenses</h3>
-            <span className="text-xs text-white/40">Last 6 months</span>
+            <span className="text-xs text-white/40">{trend.chartNote}</span>
           </div>
           <ChartCanvas config={barConfig} />
         </Card>
         <Card>
           <h3 className="font-display font-semibold mb-4">Expense Categories</h3>
-          {catLabels.length ? <ChartCanvas config={doughnutConfig} height={220} /> : <EmptyState icon="wallet" title="No expenses yet" sub="Add expenses to see category breakdown" />}
+          {catLabels.length ? <ChartCanvas config={doughnutConfig} height={220} /> : <EmptyState icon="wallet" title={expenses.length ? 'No expenses in this period' : 'No expenses yet'} sub={expenses.length ? 'Try a wider date range' : 'Add expenses to see category breakdown'} />}
         </Card>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Card className="xl:col-span-2">
           <h3 className="font-display font-semibold mb-4">Recent Transactions</h3>
-          {recent.length === 0 ? <EmptyState icon="wallet" title="No transactions yet" sub="Add income or expenses to get started" /> : (
+          {recent.length === 0 ? <EmptyState icon="wallet" title={(incomes.length || expenses.length) ? 'No transactions in this period' : 'No transactions yet'} sub={(incomes.length || expenses.length) ? 'Try a wider date range' : 'Add income or expenses to get started'} /> : (
             <div className="space-y-1">
               {recent.map((r: any) => (
                 <div key={r.kind + r.id} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
@@ -1026,7 +1134,7 @@ function DateRangeFilter({ filter, setFilter, accent, allTimeLabel = 'Total Expe
       {open ? (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)}></div>
-          <div className="absolute left-0 right-auto sm:left-auto sm:right-0 mt-2 w-[min(16rem,calc(100vw-2rem))] sm:w-64 glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-left sm:origin-top-right shadow-2xl">
+          <div className="fixed left-4 right-4 w-auto sm:absolute sm:left-auto sm:right-0 sm:w-64 mt-2 glass-strong rounded-2xl p-1.5 z-50 modal-pop origin-top-left sm:origin-top-right shadow-2xl">
             {OPTIONS.map(o => (
               <button key={o.mode} onClick={() => choose(o.mode)}
                 className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-colors ${filter.mode === o.mode ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
@@ -2368,7 +2476,7 @@ function GlobalSearch({ open, onClose, data, onNavigate }: {
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative mx-auto w-[calc(100%-2rem)] max-w-2xl glass-strong rounded-2xl modal-pop shadow-2xl flex flex-col overflow-hidden"
+      <div className="relative mx-auto w-[calc(100%_-_2rem)] max-w-2xl glass-strong rounded-2xl modal-pop shadow-2xl flex flex-col overflow-hidden"
         style={{ marginTop: 'calc(var(--safe-top) + 4.5rem)', maxHeight: 'calc(100vh - var(--safe-top) - var(--safe-bottom) - 7rem)' }}>
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-white/10 shrink-0">
           <Icon name="search" size={18} className="text-white/40 shrink-0" />
